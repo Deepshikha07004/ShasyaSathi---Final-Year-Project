@@ -49,7 +49,7 @@ const LocationScreen = ({ navigation }) => {
   const hasFetchedOnMount = useRef(false);
   const speechInProgressRef = useRef(false);
 
-  const BACKEND_API_URL = "http://192.168.29.202:3000/api/location";
+  const BACKEND_API_URL = "http://192.168.29.33:3000/api/location";
 
   // ===================================
   // ✅ LANGUAGE-AWARE MSG OBJECT

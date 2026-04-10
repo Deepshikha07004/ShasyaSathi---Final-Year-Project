@@ -9,7 +9,7 @@ import * as Speech from 'expo-speech';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { AppContext } from '../context/AppContext';
 
-const API_BASE_URL = 'http://192.168.29.202:3000';
+const API_BASE_URL = 'http://192.168.29.33:3000';
 
 const UI = {
   en: {

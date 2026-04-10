@@ -22,7 +22,7 @@ const SavedLocationScreen = ({ navigation }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerSpeaking, setIsSpeakerSpeaking] = useState(false);
 
-  const BACKEND_API_URL = "http://192.168.29.202:3000/api/location";
+  const BACKEND_API_URL = "http://192.168.29.33:3000/api/location";
 
 
   // =========================

@@ -180,9 +180,7 @@ const getActiveCrop = async (req, res) => {
         locationId: activeLocation.id,
         status: "GROWING"
       },
-      include: {
-        crop: true
-      }
+      include: { crop: true }
     });
 
     if (!activeCrop) {
@@ -192,25 +190,61 @@ const getActiveCrop = async (req, res) => {
       });
     }
 
-    // 3️⃣ Calculate crop progress
-    const sowingDate = new Date(activeCrop.sowingDate);
-    const today = new Date();
-
-    const diffTime = today - sowingDate;
-    const daysCompleted = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
+    // 3️⃣ Handle missing crop duration
     const totalDuration = activeCrop.crop.growingDurationDays;
-    const daysRemaining = totalDuration - daysCompleted;
+    if (!totalDuration || totalDuration <= 0) {
+      return res.status(500).json({
+        success: false,
+        message: "Crop duration data is missing. Please contact support."
+      });
+    }
+
+// 4️⃣ Calculate progress dynamically using date only (ignore time)
+// Strip time component so calculation is based purely on calendar dates
+// This avoids timezone issues where sowing at evening causes off-by-one errors
+const sowingDate = new Date(activeCrop.sowingDate);
+const sowingDateOnly = new Date(
+    sowingDate.getFullYear(),
+    sowingDate.getMonth(),
+    sowingDate.getDate()
+);
+
+const today = new Date();
+const todayOnly = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+);
+
+const diffMs = todayOnly - sowingDateOnly;
+const rawDaysPassed = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    // 5️⃣ Clamp values — no negatives, no over 100%
+    const daysPassed = Math.max(0, rawDaysPassed);
+    const daysLeft = Math.max(0, totalDuration - daysPassed);
+    const progressPercent = Math.min(100, Math.round((daysPassed / totalDuration) * 100));
+
+    // 6️⃣ Determine status
+    let status;
+    if (rawDaysPassed < 0) {
+      status = "Not Started";
+    } else if (daysPassed < totalDuration) {
+      status = "Growing";
+    } else {
+      status = "Completed";
+    }
 
     return res.status(200).json({
       success: true,
       data: {
         location: activeLocation.locationName,
         cropName: activeCrop.crop.cropNameEn,
-        sowingDate,
-        daysCompleted,
-        growingDuration: totalDuration,
-        daysRemaining,
+        sowingDate: activeCrop.sowingDate,
+        totalDuration,
+        daysPassed,
+        daysLeft,
+        progressPercent,
+        status,
         waterRequirement: activeCrop.crop.waterRequirement,
         climate: activeCrop.crop.suitableClimate
       }
@@ -284,10 +318,6 @@ const saveAdvisoryCrop = async (req, res) => {
     });
 
     if (!crop) {
-      // Create a basic CropMaster entry with the free-text name
-      // waterRequirement and suitableClimate must match the Prisma enums exactly:
-      // WaterRequirement: LOW | MEDIUM | HIGH
-      // Climate:          SUMMER | WINTER | MONSOON | ALL_SEASON
       crop = await prisma.cropMaster.create({
         data: {
           cropNameEn: cropName,
@@ -301,7 +331,6 @@ const saveAdvisoryCrop = async (req, res) => {
     }
 
     // 4️⃣ Save FarmerCrop
-    // sowingDate is always an ISO string from the date picker (e.g. "2026-01-12T00:00:00.000Z")
     let validSowingDate = new Date();
     if (sowingDate) {
       const parsed = new Date(sowingDate);
@@ -348,6 +377,7 @@ const saveAdvisoryCrop = async (req, res) => {
   }
 };
 
+
 // ============================================
 // 🔄 END Active Crop (farmer wants to start fresh)
 // PATCH /api/crops/end
@@ -356,7 +386,6 @@ const endActiveCrop = async (req, res) => {
   try {
     const farmerId = req.farmer.id;
 
-    // Get active location
     const activeLocation = await prisma.farmerLocation.findFirst({
       where: { farmerId, isActive: true }
     });
@@ -368,7 +397,6 @@ const endActiveCrop = async (req, res) => {
       });
     }
 
-    // Find growing crop for this location
     const activeCrop = await prisma.farmerCrop.findFirst({
       where: {
         farmerId,
@@ -384,7 +412,6 @@ const endActiveCrop = async (req, res) => {
       });
     }
 
-    // Mark as HARVESTED so farmer can start fresh
     await prisma.farmerCrop.update({
       where: { id: activeCrop.id },
       data: { status: "HARVESTED" }
@@ -403,6 +430,7 @@ const endActiveCrop = async (req, res) => {
     });
   }
 };
+
 
 module.exports = {
   getCropRecommendations,

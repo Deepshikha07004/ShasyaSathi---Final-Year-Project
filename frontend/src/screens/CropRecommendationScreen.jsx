@@ -21,7 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
-const API_BASE_URL = 'http://192.168.29.202:3000';
+const API_BASE_URL = 'http://192.168.29.33:3000';
 
 const CropRecommendationScreen = ({ navigation }) => {
     const {
@@ -55,7 +55,6 @@ const CropRecommendationScreen = ({ navigation }) => {
     const [isMuted, setIsMuted] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
 
-    // ✅ Single useEffect with setTimeout delay — no duplicate
     useEffect(() => {
         Speech.stop();
         setIsSpeaking(false);
@@ -91,29 +90,33 @@ const CropRecommendationScreen = ({ navigation }) => {
         else navigation.setOptions({ title: 'Crop Recommendation' });
     }, [step]);
 
-    useEffect(() => {
-        const checkActiveCrop = async () => {
-            setLoading(true);
-            try {
-                const token = await AsyncStorage.getItem('token');
-                const res = await fetch(`${API_BASE_URL}/api/crops/active`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                const data = await res.json();
-                if (data?.success && data?.data) {
-                    setActiveCrop(data.data);
-                    setStep(3);
-                } else {
+    // ✅ CHANGED — useFocusEffect re-fetches fresh data every time
+    // farmer navigates to this screen, so daysPassed updates daily automatically
+    useFocusEffect(
+        React.useCallback(() => {
+            const checkActiveCrop = async () => {
+                setLoading(true);
+                try {
+                    const token = await AsyncStorage.getItem('token');
+                    const res = await fetch(`${API_BASE_URL}/api/crops/active`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (data?.success && data?.data) {
+                        setActiveCrop(data.data);
+                        setStep(3);
+                    } else {
+                        setStep(1);
+                    }
+                } catch (err) {
                     setStep(1);
+                } finally {
+                    setLoading(false);
                 }
-            } catch (err) {
-                setStep(1);
-            } finally {
-                setLoading(false);
-            }
-        };
-        checkActiveCrop();
-    }, []);
+            };
+            checkActiveCrop();
+        }, [])
+    );
 
     useEffect(() => {
         if (isChatVisible) { Speech.stop(); setIsSpeaking(false); }
@@ -248,7 +251,7 @@ const CropRecommendationScreen = ({ navigation }) => {
         const summary =
             `🌾 Crop: ${activeCrop.cropName}\n` +
             `📅 Sown On: ${activeCrop.sowingDate ? new Date(activeCrop.sowingDate).toLocaleDateString() : 'N/A'}\n` +
-            `⏱ Day ${activeCrop.daysCompleted} of ${activeCrop.growingDuration}\n` +
+            `⏱ Day ${activeCrop.daysPassed} of ${activeCrop.totalDuration}\n` +
             `💧 Water Need: ${activeCrop.waterRequirement || 'N/A'}`;
         setPinnedMessage(summary);
         if (location?.id) AsyncStorage.setItem(`pinnedMessage_${location.id}`, summary);
@@ -257,7 +260,6 @@ const CropRecommendationScreen = ({ navigation }) => {
         setChatVisible(true);
     };
 
-    // ✅ CHANGED: all hardcoded English strings replaced with t. keys
     const handleEndCrop = () => {
         Alert.alert(
             t.startFreshTitle,
@@ -334,9 +336,7 @@ const CropRecommendationScreen = ({ navigation }) => {
                     )}
 
                     {step === 3 && (() => {
-                        const pct = Math.min(100, Math.round(
-                            ((activeCrop?.daysCompleted || 0) / (activeCrop?.growingDuration || 1)) * 100
-                        ));
+                        const pct = activeCrop?.progressPercent || 0;
 
                         let stageEmoji = '', stageLabel = '', stageDesc = '';
                         if (pct <= 10)       { stageEmoji = '🌾'; stageLabel = 'Sowing Stage';              stageDesc = 'Seeds are newly sown. Ensure proper soil moisture and protection.'; }
@@ -364,11 +364,11 @@ const CropRecommendationScreen = ({ navigation }) => {
                                     </View>
                                     <View style={styles.activeCropRow}>
                                         <Text style={styles.activeCropLabel}>Progress:</Text>
-                                        <Text style={styles.activeCropValue}>Day {activeCrop?.daysCompleted} of {activeCrop?.growingDuration}</Text>
+                                        <Text style={styles.activeCropValue}>Day {activeCrop?.daysPassed} of {activeCrop?.totalDuration}</Text>
                                     </View>
                                     <View style={[styles.activeCropRow, { borderBottomWidth: 0, marginBottom: 14 }]}>
                                         <Text style={styles.activeCropLabel}>Days Left:</Text>
-                                        <Text style={styles.activeCropValue}>{activeCrop?.daysRemaining} days</Text>
+                                        <Text style={styles.activeCropValue}>{activeCrop?.daysLeft} days</Text>
                                     </View>
 
                                     <View style={styles.stagePill}>
@@ -449,7 +449,6 @@ const CropRecommendationScreen = ({ navigation }) => {
                                     )}
                                 </View>
 
-                                {/* ✅ CHANGED: t.continueToChat */}
                                 <TouchableOpacity style={styles.primaryBtn} onPress={handleContinueWithActiveCrop}>
                                     <Text style={styles.btnText}>{t.continueToChat}</Text>
                                 </TouchableOpacity>
@@ -465,7 +464,6 @@ const CropRecommendationScreen = ({ navigation }) => {
                                     </TouchableOpacity>
                                 )}
 
-                                {/* ✅ CHANGED: t.startNewCrop */}
                                 <TouchableOpacity
                                     style={[styles.primaryBtn, styles.secondaryBtn]}
                                     onPress={handleEndCrop}

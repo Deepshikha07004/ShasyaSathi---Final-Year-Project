@@ -26,7 +26,7 @@ const WeatherScreen = ({ navigation }) => {
   const [speaking, setSpeaking] = useState(false);
   const [langModalVisible, setLangModalVisible] = useState(false);
 
-  const API_BASE_URL = 'http://192.168.29.202:3000';
+  const API_BASE_URL = 'http://192.168.29.33:3000';
 
   const translations = {
     ENGLISH: {
