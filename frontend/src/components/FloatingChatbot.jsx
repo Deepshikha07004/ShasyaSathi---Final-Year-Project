@@ -128,19 +128,37 @@ const FloatingChatbot = () => {
         }
     }, [location?.id]);
 
+    // ✅ Helper: show greeting based on current pinned crop
+    const showGreeting = (activePinnedMessage) => {
+        if (activePinnedMessage) {
+            const cropLine = activePinnedMessage.split('\n').find(l => l.includes('Crop:'));
+            const cropName = cropLine ? cropLine.replace(/.*Crop:\s*/, '').trim() : 'your crop';
+            setMessages([{
+                id: Date.now(),
+                text: `Your ${cropName} details are saved. Ask me anything — watering, fertilizer, pest control, or anything else about your crop.`,
+                isUser: false
+            }]);
+        } else {
+            setMessages([{
+                id: Date.now(),
+                text: "👋 Hi! I'm your AI Farming Assistant. How can I help you today?",
+                isUser: false
+            }]);
+        }
+    };
+
     // Load chat messages when chat opens
     useEffect(() => {
         const loadChatMessages = async () => {
             if (isChatVisible && sessionId) {
                 setIsLoadingHistory(true);
+                // ✅ Always wipe messages first — prevents old crop chat bleeding in
+                setMessages([]);
                 try {
-                    // Restore pinned message for this farm from AsyncStorage
-                    // Always restore from storage — it has the full data, memory may be stale
                     let activePinnedMessage = pinnedMessage;
                     if (location?.id) {
                         const savedPin = await AsyncStorage.getItem(`pinnedMessage_${location.id}`);
                         if (savedPin) {
-                            // Always prefer stored version — it has complete data
                             activePinnedMessage = savedPin;
                             if (savedPin !== pinnedMessage) {
                                 setPinnedMessage(savedPin);
@@ -151,41 +169,38 @@ const FloatingChatbot = () => {
                     const locationId = location?.id || '';
                     const data = await apiRequest(`/api/chat/history?locationId=${locationId}`, 'GET');
 
-                    // Backend returns: { success: true, data: [{ id, messageText, isFarmerMessage, timestamp }] }
                     if (data?.data && data.data.length > 0) {
-                        const formattedMessages = data.data.map(msg => ({
-                            id: msg.id || Date.now() + Math.random(),
-                            text: msg.messageText,
-                            isUser: msg.isFarmerMessage,
-                            timestamp: msg.timestamp
-                        }));
-                        setMessages(formattedMessages);
-                    } else {
-                        // No history yet — show greeting based on whether crop pin exists
-                        if (activePinnedMessage) {
-                            // Crop context exists — parse crop name from pin and ask relevant question
-                            const cropLine = activePinnedMessage.split('\n').find(l => l.includes('Crop:'));
-                            const cropName = cropLine ? cropLine.replace(/.*Crop:\s*/, '').trim() : 'your crop';
+                        // ✅ Validate history belongs to the current crop
+                        // by checking if the bot's first message mentions the current crop name
+                        const cropLine = activePinnedMessage?.split('\n').find(l => l.includes('Crop:'));
+                        const currentCropName = cropLine
+                            ? cropLine.replace(/.*Crop:\s*/, '').trim().toLowerCase()
+                            : null;
 
-                            const greeting = `Your ${cropName} details are saved. Ask me anything — watering, fertilizer, pest control, or anything else about your crop.`;
+                        const firstBotMsg = data.data
+                            .find(m => !m.isFarmerMessage)?.messageText?.toLowerCase() || '';
 
-                            setMessages([{
-                                id: Date.now(),
-                                text: greeting,
-                                isUser: false
-                            }]);
+                        const historyMatchesCrop = !currentCropName ||
+                            firstBotMsg.includes(currentCropName);
 
-                            // Persist pin for this farm
-                            if (location?.id && activePinnedMessage) {
-                                await AsyncStorage.setItem(`pinnedMessage_${location.id}`, activePinnedMessage);
-                            }
+                        if (historyMatchesCrop) {
+                            // History matches current crop — show it
+                            const formattedMessages = data.data.map(msg => ({
+                                id: msg.id || Date.now() + Math.random(),
+                                text: msg.messageText,
+                                isUser: msg.isFarmerMessage,
+                                timestamp: msg.timestamp
+                            }));
+                            setMessages(formattedMessages);
                         } else {
-                            // No crop context — general welcome
-                            setMessages([{
-                                id: Date.now(),
-                                text: "👋 Hi! I'm your AI Farming Assistant. How can I help you today?",
-                                isUser: false
-                            }]);
+                            // ✅ History is for old crop — show fresh greeting for new crop
+                            showGreeting(activePinnedMessage);
+                        }
+                    } else {
+                        showGreeting(activePinnedMessage);
+                        // Persist pin for this farm
+                        if (location?.id && activePinnedMessage) {
+                            await AsyncStorage.setItem(`pinnedMessage_${location.id}`, activePinnedMessage);
                         }
                     }
                 } catch (error) {
@@ -204,7 +219,6 @@ const FloatingChatbot = () => {
         loadChatMessages();
     }, [isChatVisible, sessionId, chatType, location?.id]);
 
-    // Save message to backend
     const getAIResponse = async (userMessage) => {
         try {
             const data = await apiRequest('/api/chat/advisory', 'POST', {
@@ -405,15 +419,13 @@ const FloatingChatbot = () => {
                             <TouchableOpacity 
                                 onPress={() => {
                                     setChatVisible(false);
-                                    // If chatbot was opened from the CropAdvisory wizard,
-                                    // go straight to Home — avoids the farmer having to
-                                    // press back through CropAdvisory → CropRec → Home.
-                                    if (chatType === 'Advisory') {
-                                        navigation.reset({
-                                            index: 0,
-                                            routes: [{ name: 'Home' }],
-                                        });
-                                    }
+                                    // ✅ Always navigate directly to Home on close
+                                    // regardless of chatType — avoids farmer going
+                                    // through CropRecommendation → MyCrop → Home
+                                    navigation.reset({
+                                        index: 0,
+                                        routes: [{ name: 'Home' }],
+                                    });
                                 }}
                                 style={styles.closeButton}
                             >

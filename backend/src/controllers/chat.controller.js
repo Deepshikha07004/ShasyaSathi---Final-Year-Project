@@ -309,7 +309,36 @@ const getChatHistory = async (req, res) => {
 };
 
 
+/**
+ * 🗑️ Clear Chat History for a location
+ * DELETE /api/chat/history?locationId=xxx
+ * Called when farmer ends a crop and starts fresh,
+ * so old crop's chat doesn't bleed into the new crop's chat.
+ */
+const clearChatHistory = async (req, res) => {
+  try {
+    const farmerId = req.farmer.id;
+    const { locationId } = req.query;
+
+    if (!locationId) {
+      return res.status(400).json({ success: false, message: 'locationId is required' });
+    }
+
+    await prisma.chatHistory.deleteMany({
+      where: { farmerId, locationId }
+    });
+
+    return res.status(200).json({ success: true, message: 'Chat history cleared' });
+
+  } catch (error) {
+    console.error('Clear Chat History Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+
 module.exports = {
   advisoryChat,
-  getChatHistory
+  getChatHistory,
+  clearChatHistory
 };

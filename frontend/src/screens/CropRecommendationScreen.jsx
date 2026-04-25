@@ -253,13 +253,12 @@ const CropRecommendationScreen = ({ navigation }) => {
     // so backend can upsert CropMaster without needing existing DB records.
     const handleCropSelect = async (crop) => {
         try {
-            // Try with cropId first if available (existing DB row), else use ML profile fields
             const payload = crop.id
                 ? { cropId: crop.id }
                 : {
                     cropName:            crop.cropName,
-                    cropNameHi:          crop.cropNameHi,   // ✅ real Hindi name from ML knowledge base
-                    cropNameBn:          crop.cropNameBn,   // ✅ real Bengali name from ML knowledge base
+                    cropNameHi:          crop.cropNameHi,
+                    cropNameBn:          crop.cropNameBn,
                     growingDurationDays: crop.growingDurationDays,
                     waterRequirement:    crop.waterRequirement,
                     suitableClimate:     crop.suitableClimate,
@@ -277,6 +276,17 @@ const CropRecommendationScreen = ({ navigation }) => {
             `⏱ Grows in: ${crop.duration || 'N/A'}\n` +
             `💧 Water Need: ${crop.waterRequirement || 'N/A'}\n` +
             `🌤 Climate: ${crop.climate || 'N/A'}`;
+
+        // ✅ Clear old crop's chat history from DB before opening new chat
+        if (location?.id) {
+            try {
+                await apiRequest(`/api/chat/history?locationId=${location.id}`, 'DELETE');
+            } catch (e) {
+                console.log('Chat history clear (non-fatal):', e.message);
+            }
+            // ✅ Save new crop's pinned message to AsyncStorage
+            await AsyncStorage.setItem(`pinnedMessage_${location.id}`, summary);
+        }
 
         setPinnedMessage(summary);
         setChatType('Recommendation');
@@ -310,6 +320,23 @@ const CropRecommendationScreen = ({ navigation }) => {
                         setEndingCrop(true);
                         try {
                             await apiRequest('/api/crops/end', 'PATCH');
+
+                            // ✅ Clear chat history in DB for this location
+                            if (location?.id) {
+                                try {
+                                    await apiRequest(`/api/chat/history?locationId=${location.id}`, 'DELETE');
+                                } catch (e) {
+                                    console.log('Chat history clear (non-fatal):', e.message);
+                                }
+                                // ✅ Remove pinned message from AsyncStorage for this location
+                                await AsyncStorage.removeItem(`pinnedMessage_${location.id}`);
+                            }
+
+                            // ✅ Clear all chat-related global state
+                            setPinnedMessage(null);
+                            setChatType('General');
+                            setChatVisible(false);
+
                             setActiveCrop(null);
                             setHarvestDone(false);
                             setShowHarvestInput(false);
@@ -635,11 +662,7 @@ const CropRecommendationScreen = ({ navigation }) => {
                         )}
                     </View>
 
-                    {step > 1 && !loading && !error && recommendations.length > 0 && (
-                        <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-                            <Ionicons name="arrow-back-circle" size={50} color="#2E7D32" />
-                        </TouchableOpacity>
-                    )}
+
                 </View>
             </View>
         </ImageBackground>
