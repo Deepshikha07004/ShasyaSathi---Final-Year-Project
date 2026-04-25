@@ -536,11 +536,6 @@ const LocationScreen = ({ navigation }) => {
   // =============================
   // TEMPORARY SKIP
   // =============================
-  const skipToHome = () => {
-    Speech.stop();
-    setIsSpeakerSpeaking(false);
-    navigation.reset({ index: 0, routes: [{ name: "Home" }] });
-  };
 
   // =============================
   // HELPERS
@@ -630,15 +625,6 @@ const LocationScreen = ({ navigation }) => {
             </View>
 
             {/* Temporary Skip Button */}
-            <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
-              <TouchableOpacity onPress={skipToHome} style={{
-                backgroundColor: "#9C27B0", padding: 15, borderRadius: 12,
-                alignItems: "center", elevation: 5, flexDirection: "row", justifyContent: "center",
-              }}>
-                <Ionicons name="arrow-forward-circle" size={24} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>{msg.skip}</Text>
-              </TouchableOpacity>
-            </View>
 
             {/* Loading */}
             {isGettingLocation && (

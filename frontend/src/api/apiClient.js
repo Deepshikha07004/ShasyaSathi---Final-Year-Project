@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // ======================================
 // BASE API URL
 // ======================================
-const BASE_URL = "http://192.168.29.33:3000";
+export const BASE_URL = "http://192.168.29.33:3000";
 
 // ======================================
 // IN-MEMORY TOKEN (FASTER THAN STORAGE)

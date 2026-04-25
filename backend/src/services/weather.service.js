@@ -16,15 +16,15 @@ class WeatherService {
     const d = res.data;
 
     return {
-      temperature: Math.round(d.main.temp),
-      feelsLike: Math.round(d.main.feels_like),
-      humidity: d.main.humidity,
-      windSpeed: d.wind.speed,
-      weatherMain: d.weather[0].main,
-      weatherDesc: d.weather[0].description,
-      pressure: d.main.pressure,
-      visibility: d.visibility,
-      weatherIcon: d.weather[0].icon || "",  // ✅ Added icon from API
+      temperature:  Math.round(d.main.temp),
+      feelsLike:    Math.round(d.main.feels_like),
+      humidity:     d.main.humidity,
+      windSpeed:    d.wind.speed,
+      weatherMain:  d.weather[0].main,
+      weatherDesc:  d.weather[0].description,
+      pressure:     d.main.pressure,
+      visibility:   d.visibility,
+      weatherIcon:  d.weather[0].icon || '',
     };
   }
 
@@ -42,14 +42,18 @@ class WeatherService {
 
     res.data.list.forEach(item => {
       const date = new Date(item.dt * 1000);
-      const key = date.toISOString().split('T')[0];
+      const key  = date.toISOString().split('T')[0];
 
       if (!map[key]) {
         map[key] = {
           date,
-          temps: [],
+          temps:       [],
           weatherMain: item.weather[0].main,
-          weatherIcon: item.weather[0].icon || "",  // ✅ Added icon
+          // ✅ FIX: capture weatherDesc, humidity, windSpeed per slot
+          weatherDesc: item.weather[0].description,
+          weatherIcon: item.weather[0].icon || '',
+          humidity:    item.main.humidity,
+          windSpeed:   item.wind?.speed ?? 0,
         };
       }
 
@@ -57,11 +61,15 @@ class WeatherService {
     });
 
     return Object.values(map).map(d => ({
-      date: d.date,
-      tempMax: Math.round(Math.max(...d.temps)),
-      tempMin: Math.round(Math.min(...d.temps)),
+      date:        d.date,
+      tempMax:     Math.round(Math.max(...d.temps)),
+      tempMin:     Math.round(Math.min(...d.temps)),
       weatherMain: d.weatherMain,
-      weatherIcon: d.weatherIcon,  // ✅ Added icon
+      // ✅ FIX: include all required schema fields
+      weatherDesc: d.weatherDesc,
+      weatherIcon: d.weatherIcon,
+      humidity:    d.humidity,
+      windSpeed:   d.windSpeed,
     })).slice(0, 5);
   }
 
@@ -70,31 +78,22 @@ class WeatherService {
       where: { farmerId, isActive: true }
     });
 
-    if (!location) throw new Error("No active location");
+    if (!location) throw new Error('No active location');
 
-    const current = await this.getCurrentWeather(
-      location.latitude,
-      location.longitude
-    );
+    const current  = await this.getCurrentWeather(location.latitude, location.longitude);
+    const forecast = await this.getForecast(location.latitude, location.longitude);
 
-    const forecast = await this.getForecast(
-      location.latitude,
-      location.longitude
-    );
-
-    // ✅ Save weather + forecast to DB (async, non-blocking)
+    // Save to DB async (non-blocking)
     this._saveWeatherData(location.id, current).catch(err =>
-      console.log("Weather save error (non-fatal):", err.message)
+      console.log('Weather save error (non-fatal):', err.message)
     );
-
     this._saveForecastData(location.id, forecast).catch(err =>
-      console.log("Forecast save error (non-fatal):", err.message)
+      console.log('Forecast save error (non-fatal):', err.message)
     );
 
     return { location, current, forecast };
   }
 
-  // ✅ Save current weather to DB
   async _saveWeatherData(locationId, current) {
     await prisma.weatherData.upsert({
       where:  { locationId },
@@ -126,26 +125,24 @@ class WeatherService {
     });
   }
 
-  // ✅ Save forecast data to DB
   async _saveForecastData(locationId, forecast) {
     // Delete old forecasts for this location
-    await prisma.weatherForecast.deleteMany({
-      where: { locationId }
-    });
+    await prisma.weatherForecast.deleteMany({ where: { locationId } });
 
-    // Insert new forecast data
+    // ✅ FIX: include all required fields (weatherDesc, humidity, windSpeed)
     const forecastRecords = forecast.map(f => ({
       locationId,
-      date: f.date,
-      tempMax: f.tempMax,
-      tempMin: f.tempMin,
+      date:        f.date,
+      tempMax:     f.tempMax,
+      tempMin:     f.tempMin,
       weatherMain: f.weatherMain,
+      weatherDesc: f.weatherDesc || f.weatherMain,   // fallback to weatherMain if missing
       weatherIcon: f.weatherIcon,
+      humidity:    f.humidity    ?? 50,
+      windSpeed:   f.windSpeed   ?? 0,
     }));
 
-    await prisma.weatherForecast.createMany({
-      data: forecastRecords
-    });
+    await prisma.weatherForecast.createMany({ data: forecastRecords });
   }
 
 }

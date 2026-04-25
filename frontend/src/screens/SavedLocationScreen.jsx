@@ -433,9 +433,9 @@ const styles = StyleSheet.create({
 
   headerSubtitle: {
     fontSize: 15,
-    color: '#4CAF50',
+    color: '#0d430f',
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '600',
   },
 
   listContainer: {

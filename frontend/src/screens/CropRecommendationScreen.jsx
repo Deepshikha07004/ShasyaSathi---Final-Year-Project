@@ -11,17 +11,16 @@ import {
     Dimensions,
     TextInput,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { AppContext } from '../context/AppContext';
 import { apiRequest } from '../api/apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { BASE_URL } from '../api/apiClient';
 
 const { width, height } = Dimensions.get('window');
-
-const API_BASE_URL = 'http://192.168.29.33:3000';
+const API_BASE_URL = BASE_URL;
 
 const CropRecommendationScreen = ({ navigation }) => {
     const {
@@ -44,7 +43,10 @@ const CropRecommendationScreen = ({ navigation }) => {
     const [activeCrop, setActiveCrop] = useState(null);
     const [endingCrop, setEndingCrop] = useState(false);
 
-    // ─── Harvest states ────────────────────────────────────────────────────
+    // ML state
+    const [mlRecommendation, setMlRecommendation] = useState(null);
+
+    // Harvest states
     const [showHarvestInput, setShowHarvestInput] = useState(false);
     const [harvestQuantity, setHarvestQuantity] = useState('');
     const [harvestUnit, setHarvestUnit] = useState('kg');
@@ -90,8 +92,7 @@ const CropRecommendationScreen = ({ navigation }) => {
         else navigation.setOptions({ title: 'Crop Recommendation' });
     }, [step]);
 
-    // ✅ CHANGED — useFocusEffect re-fetches fresh data every time
-    // farmer navigates to this screen, so daysPassed updates daily automatically
+    // Re-fetch every time farmer opens this screen
     useFocusEffect(
         React.useCallback(() => {
             const checkActiveCrop = async () => {
@@ -122,7 +123,7 @@ const CropRecommendationScreen = ({ navigation }) => {
         if (isChatVisible) { Speech.stop(); setIsSpeaking(false); }
     }, [isChatVisible]);
 
-    // ─── Harvest crop handler ──────────────────────────────────────────────
+    // ─── Harvest crop ──────────────────────────────────────────────────────────
     const handleHarvestCrop = async () => {
         if (!harvestQuantity || isNaN(harvestQuantity) || parseFloat(harvestQuantity) <= 0) {
             Alert.alert(
@@ -166,10 +167,10 @@ const CropRecommendationScreen = ({ navigation }) => {
             Alert.alert(
                 lang === 'hi' ? '✅ फसल दर्ज हो गई!' : lang === 'bn' ? '✅ ফসল নথিভুক্ত হয়েছে!' : '✅ Harvest Recorded!',
                 lang === 'hi'
-                    ? 'आपकी फसल सफलतापूर्वक दर्ज हो गई। अब कोल्ड स्टोरेज खोजने के लिए स्टोरेज सेक्शन में जाएं।'
+                    ? 'आपकी फसल सफलतापूर्वक दर्ज हो गई।'
                     : lang === 'bn'
-                    ? 'আপনার ফসল সফলভাবে নথিভুক্ত হয়েছে। কোল্ড স্টোরেজ খুঁজতে স্টোরেজ বিভাগে যান।'
-                    : 'Your harvest has been recorded. Go to the Storage section to find cold storage near you.',
+                    ? 'আপনার ফসল সফলভাবে নথিভুক্ত হয়েছে।'
+                    : 'Your harvest has been recorded. Go to Storage to find cold storage near you.',
                 [{ text: lang === 'hi' ? 'ठीक है' : lang === 'bn' ? 'ঠিক আছে' : 'OK' }]
             );
 
@@ -180,28 +181,48 @@ const CropRecommendationScreen = ({ navigation }) => {
         }
     };
 
+    // ─── Fetch recommendations from ML-powered backend ────────────────────────
     const fetchRecommendations = async () => {
         setLoading(true);
         setError(null);
+        setMlRecommendation(null);
         try {
             const data = await apiRequest('/api/crops/recommendation', 'GET');
+
             if (data?.mode === 'ACTIVE_CROP_EXISTS') {
                 setChatType('CropAdv');
                 navigation.navigate('CropAdv');
                 return;
             }
+
             if (data?.data && Array.isArray(data.data)) {
-                const mapped = data.data.map(crop => ({
-                    id: crop.id,
-                    name: crop.cropNameEn,
-                    duration: `${crop.growingDurationDays} days`,
+                if (data.mlUsed && data.mlRecommendation) {
+                    setMlRecommendation(data.mlRecommendation);
+                }
+
+                // Map backend profile fields to what the card renderer expects.
+                // The backend now returns profile objects (cropNameEn, growingDurationDays, etc.)
+                // directly from the ML knowledge base — no DB IDs needed for display.
+                const mapped = data.data.map((crop, index) => ({
+                    // Use cropNameEn as a stable key since these come from the knowledge base
+                    id:               crop.id || null,           // present only if upserted in DB
+                    cropName:         crop.cropNameEn,
+                    cropNameHi:       crop.cropNameHi,
+                    cropNameBn:       crop.cropNameBn,
+                    name:             crop.cropNameEn,
+                    duration:         `${crop.growingDurationDays} days`,
                     waterRequirement: crop.waterRequirement,
-                    climate: crop.suitableClimate,
+                    climate:          crop.suitableClimate,
+                    growingDurationDays: crop.growingDurationDays,
+                    suitableClimate:  crop.suitableClimate,
+                    isMLRecommended:  data.mlUsed === true && index === 0,
+                    confidence:       data.mlUsed && index === 0 ? data.mlRecommendation?.confidence : null,
                 }));
+
                 setRecommendations(mapped);
                 setStep(2);
             } else {
-                throw new Error('Invalid data');
+                throw new Error('Invalid data from server');
             }
         } catch (err) {
             setError('Unable to load recommendations');
@@ -227,12 +248,28 @@ const CropRecommendationScreen = ({ navigation }) => {
         else fetchRecommendations();
     };
 
+    // ─── Select a crop ─────────────────────────────────────────────────────────
+    // CHANGED: now sends full ML profile (cropName, duration, etc.) to backend
+    // so backend can upsert CropMaster without needing existing DB records.
     const handleCropSelect = async (crop) => {
         try {
-            await apiRequest('/api/crops/select', 'POST', { cropId: crop.id });
+            // Try with cropId first if available (existing DB row), else use ML profile fields
+            const payload = crop.id
+                ? { cropId: crop.id }
+                : {
+                    cropName:            crop.cropName,
+                    cropNameHi:          crop.cropNameHi,   // ✅ real Hindi name from ML knowledge base
+                    cropNameBn:          crop.cropNameBn,   // ✅ real Bengali name from ML knowledge base
+                    growingDurationDays: crop.growingDurationDays,
+                    waterRequirement:    crop.waterRequirement,
+                    suitableClimate:     crop.suitableClimate,
+                  };
+
+            await apiRequest('/api/crops/select', 'POST', payload);
         } catch (error) {
             console.log('Crop select note:', error.message);
         }
+
         const season = getCurrentSeason();
         const summary =
             `🌾 Crop: ${crop.name}\n` +
@@ -240,6 +277,7 @@ const CropRecommendationScreen = ({ navigation }) => {
             `⏱ Grows in: ${crop.duration || 'N/A'}\n` +
             `💧 Water Need: ${crop.waterRequirement || 'N/A'}\n` +
             `🌤 Climate: ${crop.climate || 'N/A'}`;
+
         setPinnedMessage(summary);
         setChatType('Recommendation');
         setChatBackground(require('../assets/truck.jpg'));
@@ -293,6 +331,7 @@ const CropRecommendationScreen = ({ navigation }) => {
         setRecommendations([]);
         setError(null);
         setSelectedOption(null);
+        setMlRecommendation(null);
         Speech.stop();
         setIsSpeaking(false);
     };
@@ -300,17 +339,34 @@ const CropRecommendationScreen = ({ navigation }) => {
     const getBackgroundImage = () =>
         step === 1 ? require('../assets/homebg.jpg') : require('../assets/crop.jpg');
 
-    const renderCropCard = (crop) => {
-        const imageSource = crop.imageUrl ? { uri: crop.imageUrl } : require('../assets/crop.jpg');
+    // ─── Crop card renderer ───────────────────────────────────────────────────
+    const renderCropCard = (crop, index) => {
+        const imageSource = require('../assets/crop.jpg');
         return (
-            <TouchableOpacity key={crop.id || crop._id} style={styles.cropCard} onPress={() => handleCropSelect(crop)} activeOpacity={0.7}>
+            <TouchableOpacity
+                key={`${crop.cropName}-${index}`}
+                style={[styles.cropCard, crop.isMLRecommended && styles.cropCardML]}
+                onPress={() => handleCropSelect(crop)}
+                activeOpacity={0.7}
+            >
                 <ImageBackground source={imageSource} style={styles.cropImage} imageStyle={{ borderRadius: 10 }}>
                     <View style={styles.cropOverlay}>
+                        {crop.isMLRecommended && (
+                            <View style={styles.mlBadge}>
+                                <Text style={styles.mlBadgeText}>
+                                    🤖 {lang === 'hi' ? 'आपके खेत के लिए अनुशंसित' : lang === 'bn' ? 'আপনার খামারের জন্য প্রস্তাবিত' : 'Recommended for your farm'}
+                                    {crop.confidence ? `  •  ${Math.round(crop.confidence * 100)}%` : ''}
+                                </Text>
+                            </View>
+                        )}
                         <Text style={styles.cropName}>{crop.name}</Text>
                         <View style={styles.cropDetails}>
-                            {crop.confidence && <Text style={styles.cropInfo}>✓ {crop.confidence}</Text>}
+                            {crop.isMLRecommended && crop.confidence && (
+                                <Text style={styles.cropInfo}>✓ {Math.round(crop.confidence * 100)}% match</Text>
+                            )}
                             {crop.duration && <Text style={styles.cropInfo}>⏱ {crop.duration}</Text>}
                             {crop.waterRequirement && <Text style={styles.cropInfo}>💧 {crop.waterRequirement}</Text>}
+                            {crop.climate && <Text style={styles.cropInfo}>🌤 {crop.climate}</Text>}
                         </View>
                     </View>
                 </ImageBackground>
@@ -335,18 +391,18 @@ const CropRecommendationScreen = ({ navigation }) => {
                         </View>
                     )}
 
+                    {/* ── Active crop view ── */}
                     {step === 3 && (() => {
                         const pct = activeCrop?.progressPercent || 0;
-
                         let stageEmoji = '', stageLabel = '', stageDesc = '';
-                        if (pct <= 10)       { stageEmoji = '🌾'; stageLabel = 'Sowing Stage';              stageDesc = 'Seeds are newly sown. Ensure proper soil moisture and protection.'; }
-                        else if (pct <= 25)  { stageEmoji = '🌱'; stageLabel = 'Early Growth Stage';        stageDesc = 'Crop has started growing. Monitor water and basic nutrients.'; }
-                        else if (pct <= 40)  { stageEmoji = '🌿'; stageLabel = 'Vegetative Growth Stage';   stageDesc = 'Plants are developing leaves and height. Regular care is important.'; }
-                        else if (pct <= 60)  { stageEmoji = '🌳'; stageLabel = 'Strong Growth Stage';       stageDesc = 'Crop is growing actively. Focus on fertilizer and pest monitoring.'; }
-                        else if (pct <= 75)  { stageEmoji = '🌼'; stageLabel = 'Flowering Stage';           stageDesc = 'Crop is entering reproductive phase. Water and disease control are crucial.'; }
-                        else if (pct <= 90)  { stageEmoji = '🌾'; stageLabel = 'Grain / Fruit Formation';  stageDesc = 'Yield is developing. Maintain nutrition and protect from weather risks.'; }
-                        else if (pct < 100)  { stageEmoji = '🌞'; stageLabel = 'Maturity Stage';            stageDesc = 'Crop is almost ready. Prepare for harvesting activities.'; }
-                        else                 { stageEmoji = '🚜'; stageLabel = 'Ready for Harvest';         stageDesc = 'Your crop is fully mature. You can begin harvesting.'; }
+                        if (pct <= 10)      { stageEmoji = '🌾'; stageLabel = 'Sowing Stage';            stageDesc = 'Seeds are newly sown. Ensure proper soil moisture and protection.'; }
+                        else if (pct <= 25) { stageEmoji = '🌱'; stageLabel = 'Early Growth Stage';      stageDesc = 'Crop has started growing. Monitor water and basic nutrients.'; }
+                        else if (pct <= 40) { stageEmoji = '🌿'; stageLabel = 'Vegetative Growth Stage'; stageDesc = 'Plants are developing leaves and height. Regular care is important.'; }
+                        else if (pct <= 60) { stageEmoji = '🌳'; stageLabel = 'Strong Growth Stage';     stageDesc = 'Crop is growing actively. Focus on fertilizer and pest monitoring.'; }
+                        else if (pct <= 75) { stageEmoji = '🌼'; stageLabel = 'Flowering Stage';         stageDesc = 'Crop is entering reproductive phase. Water and disease control are crucial.'; }
+                        else if (pct <= 90) { stageEmoji = '🌾'; stageLabel = 'Grain / Fruit Formation'; stageDesc = 'Yield is developing. Maintain nutrition and protect from weather risks.'; }
+                        else if (pct < 100) { stageEmoji = '🌞'; stageLabel = 'Maturity Stage';          stageDesc = 'Crop is almost ready. Prepare for harvesting activities.'; }
+                        else                { stageEmoji = '🚜'; stageLabel = 'Ready for Harvest';       stageDesc = 'Your crop is fully mature. You can begin harvesting.'; }
 
                         const isReadyToHarvest = pct >= 100;
 
@@ -478,6 +534,7 @@ const CropRecommendationScreen = ({ navigation }) => {
                         );
                     })()}
 
+                    {/* ── Step 1: Have you sown? ── */}
                     {step === 1 && (
                         <View style={styles.centerContainer}>
                             <Ionicons name="help-circle-outline" size={90} color="#2E7D32" />
@@ -491,17 +548,43 @@ const CropRecommendationScreen = ({ navigation }) => {
                         </View>
                     )}
 
+                    {/* ── Step 2: Crop list ── */}
                     {step === 2 && (
                         <View style={styles.container}>
                             <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                                 <View style={styles.headerContainer}>
-                                    <Text style={styles.sectionTitle}>Recommended Crops for {getCurrentSeason()} Season</Text>
-                                    <Text style={styles.subtitle}>Based on your location and weather</Text>
+                                    {mlRecommendation && (
+                                        <View style={styles.mlBanner}>
+                                            <Text style={styles.mlBannerText}>
+                                                🤖 {lang === 'hi'
+                                                    ? `AI ने "${mlRecommendation.cropName}" की सिफारिश की है`
+                                                    : lang === 'bn'
+                                                    ? `AI "${mlRecommendation.cropName}" সুপারিশ করেছে`
+                                                    : `AI recommended "${mlRecommendation.cropName}" for your location`}
+                                            </Text>
+                                        </View>
+                                    )}
+                                    <Text style={styles.sectionTitle}>
+                                        {lang === 'hi'
+                                            ? `${getCurrentSeason()} सीजन के लिए फसलें`
+                                            : lang === 'bn'
+                                            ? `${getCurrentSeason()} মৌসুমের জন্য ফসল`
+                                            : `Recommended Crops for ${getCurrentSeason()} Season`}
+                                    </Text>
+                                    <Text style={styles.subtitle}>
+                                        {lang === 'hi' ? 'आपकी लोकेशन और मौसम के आधार पर' :
+                                         lang === 'bn' ? 'আপনার অবস্থান ও আবহাওয়ার উপর ভিত্তি করে' :
+                                         'Based on your location and weather'}
+                                    </Text>
                                 </View>
                                 {loading ? (
                                     <View style={styles.loadingContainer}>
                                         <ActivityIndicator size="large" color="#2E7D32" />
-                                        <Text style={styles.loadingText}>Finding best crops for you...</Text>
+                                        <Text style={styles.loadingText}>
+                                            {lang === 'hi' ? '🤖 AI आपके लिए सबसे अच्छी फसल खोज रहा है...' :
+                                             lang === 'bn' ? '🤖 AI আপনার জন্য সেরা ফসল খুঁজছে...' :
+                                             '🤖 AI is finding the best crops for your farm...'}
+                                        </Text>
                                     </View>
                                 ) : error ? (
                                     <View style={styles.errorContainer}>
@@ -516,7 +599,7 @@ const CropRecommendationScreen = ({ navigation }) => {
                                     </View>
                                 ) : recommendations.length > 0 ? (
                                     <View style={styles.recommendationsContainer}>
-                                        {recommendations.map(renderCropCard)}
+                                        {recommendations.map((crop, index) => renderCropCard(crop, index))}
                                     </View>
                                 ) : (
                                     <View style={styles.emptyContainer}>
@@ -535,6 +618,7 @@ const CropRecommendationScreen = ({ navigation }) => {
                         </View>
                     )}
 
+                    {/* Speaker button */}
                     <View style={styles.speakerFixedContainer}>
                         <TouchableOpacity
                             style={[styles.speakerButton, isMuted ? styles.mutedButton : styles.activeButton]}
@@ -586,9 +670,9 @@ const styles = StyleSheet.create({
     backBtnText: { color: '#666', fontSize: 16, fontWeight: '500', textAlign: 'center' },
     emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10 },
     emptyText: { fontSize: 18, color: '#333', marginTop: 15, fontWeight: '600', textAlign: 'center' },
-    emptySubText: { fontSize: 14, color: '#666', marginBottom: 25, marginTop: 5, textAlign: 'center' },
     recommendationsContainer: { paddingBottom: 20 },
     cropCard: { marginBottom: 16, borderRadius: 12, overflow: 'hidden', elevation: 4 },
+    cropCardML: { elevation: 8, borderWidth: 2, borderColor: '#2E7D32' },
     cropImage: { width: '100%', height: 200 },
     cropOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', padding: 16, justifyContent: 'flex-end' },
     cropName: { fontSize: 26, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
@@ -596,6 +680,10 @@ const styles = StyleSheet.create({
     cropInfo: { fontSize: 12, color: '#fff', backgroundColor: 'rgba(46,125,50,0.85)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15, marginRight: 8, marginBottom: 8, overflow: 'hidden', fontWeight: '500' },
     backButton: { position: 'absolute', bottom: 20, left: 100, backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 25, elevation: 5, padding: 2, zIndex: 999 },
     bottomPadding: { height: 60 },
+    mlBanner: { backgroundColor: '#E8F5E9', borderRadius: 8, padding: 10, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#2E7D32' },
+    mlBannerText: { fontSize: 13, fontWeight: '600', color: '#1B5E20' },
+    mlBadge: { backgroundColor: 'rgba(27,94,32,0.92)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start', marginBottom: 8 },
+    mlBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
     activeCropCard: { backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 16, padding: 20, width: '90%', marginBottom: 24, elevation: 5, borderWidth: 1.5, borderColor: '#2E7D32' },
     activeCropTitle: { fontSize: 18, fontWeight: 'bold', color: '#2E7D32', textAlign: 'center', marginBottom: 14 },
     activeCropRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#eee' },

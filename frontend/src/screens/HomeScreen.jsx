@@ -1,4 +1,4 @@
-import { testBackend } from "../api/apiClient";
+import { testBackend, setAuthToken } from "../api/apiClient";
 import React, { useState, useContext, useEffect } from "react";
 import {
   View,
@@ -60,13 +60,17 @@ const HomeScreen = ({ navigation }) => {
     setChatVisible(true);
   };
 
-  const logout = async () => {
-    setProfileModalVisible(false);
-    setUser(null);
-    await AsyncStorage.removeItem("token");
-    await AsyncStorage.removeItem("userData");
-    navigation.replace("Login");
-  };
+const logout = async () => {
+  setProfileModalVisible(false);
+  setUser(null);
+  // ✅ Clear all stored auth data
+  await AsyncStorage.removeItem("token");
+  await AsyncStorage.removeItem("userData");
+  await AsyncStorage.removeItem("isLoggedIn");   // ✅ set by Signup, must be cleared
+  // ✅ Reset in-memory token so API calls stop sending Authorization header
+  setAuthToken(null);
+  navigation.replace("Login");
+};
 
   const changeLanguage = (languageCode) => {
     setLang(languageCode);
