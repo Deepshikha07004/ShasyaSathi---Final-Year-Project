@@ -8,8 +8,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Speech from 'expo-speech';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { AppContext } from '../context/AppContext';
+import { BASE_URL } from '../api/apiClient';
 
-const API_BASE_URL = 'http://192.168.29.33:3000';
+const API_BASE_URL = BASE_URL;
 
 const UI = {
   en: {

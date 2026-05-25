@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppContext } from "../context/AppContext";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { BASE_URL } from "../api/apiClient";
 
 const LocationScreen = ({ navigation }) => {
 
@@ -49,7 +50,7 @@ const LocationScreen = ({ navigation }) => {
   const hasFetchedOnMount = useRef(false);
   const speechInProgressRef = useRef(false);
 
-  const BACKEND_API_URL = "http://192.168.29.33:3000/api/location";
+  const BACKEND_API_URL = `${BASE_URL}/api/location`;
 
   // ===================================
   // ✅ LANGUAGE-AWARE MSG OBJECT

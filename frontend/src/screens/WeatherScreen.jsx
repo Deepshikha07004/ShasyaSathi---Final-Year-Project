@@ -15,6 +15,7 @@ import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Speech from 'expo-speech';
 import { AppContext } from '../context/AppContext';
+import { BASE_URL } from '../api/apiClient';
 
 const WeatherScreen = ({ navigation }) => {
   const { lang, setLang } = useContext(AppContext);
@@ -26,7 +27,7 @@ const WeatherScreen = ({ navigation }) => {
   const [speaking, setSpeaking] = useState(false);
   const [langModalVisible, setLangModalVisible] = useState(false);
 
-  const API_BASE_URL = 'http://192.168.29.33:3000';
+  const API_BASE_URL = BASE_URL;
 
   const translations = {
     ENGLISH: {

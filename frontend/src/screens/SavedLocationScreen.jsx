@@ -10,6 +10,7 @@ import { AppContext } from '../context/AppContext';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Speech from 'expo-speech';
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { BASE_URL } from "../api/apiClient";
 
 const SavedLocationScreen = ({ navigation }) => {
 
@@ -22,7 +23,7 @@ const SavedLocationScreen = ({ navigation }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerSpeaking, setIsSpeakerSpeaking] = useState(false);
 
-  const BACKEND_API_URL = "http://192.168.29.33:3000/api/location";
+  const BACKEND_API_URL = `${BASE_URL}/api/location`;
 
 
   // =========================
