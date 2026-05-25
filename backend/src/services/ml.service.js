@@ -1,37 +1,22 @@
 /**
  * ml.service.js
  *
- * ML /predict schema — confirmed from /docs Schemas section:
- *   N*, P*, K*        → integer (always integers in training CSV)
- *   temperature*      → float
- *   humidity*         → float
- *   ph*               → float
- *   rainfall*         → float, range [20.21 – 298.56] NEVER ZERO
+ * ROOT CAUSE OF MUSKMELON BIAS (fixed here):
  *
- * Training dataset: Crop_recommendation.csv (2200 rows, 22 crops)
- * Crops: apple, banana, blackgram, chickpea, coconut, coffee, cotton,
- *        grapes, jute, kidneybeans, lentil, maize, mango, mothbeans,
- *        mungbean, muskmelon, orange, papaya, pigeonpeas, pomegranate,
- *        rice, watermelon
+ * Problem 1 — rainfall was always 0:
+ *   We were using `current.precipitation` which is mm in the LAST HOUR.
+ *   At any given moment this is 0mm. The dataset mean rainfall is 103mm.
+ *   Fix: Use 7-day sum of hourly precipitation from Open-Meteo hourly forecast.
  *
- * NOTE ON 500 ERROR:
- * The 500 "Model not loaded" is a Render server deployment issue — the
- * .pkl/.joblib model file is missing or not found at startup on Render.
- * Our field names and value ranges are confirmed correct.
- * ML teammate needs to check Render deployment logs and redeploy.
- */
-
-/**
- * ml.service.js
+ * Problem 2 — P was too high (~54) vs muskmelon's P=18:
+ *   Our formula was: P = 30 + (soilTemp-10)*1.2 + avgSoil*20
+ *   This consistently gave P=50-60 which matches muskmelon/rice better.
+ *   Fix: Recalibrated formula based on actual dataset mean P=53.
  *
- * CONFIRMED working ML /predict field names:
- *   N, P, K, temperature, humidity, ph, rainfall
- *
- * ✅ NEW: CROP_PROFILES now includes weather thresholds per crop.
- *   The fallback list (and the "other crops" list shown below ML recommendation)
- *   is filtered by BOTH season AND actual Open-Meteo weather values.
- *   This prevents unsuitable crops (Coffee, Grapes, Cotton for Kolkata) from
- *   appearing regardless of whether ML is working or not.
+ * Problem 3 — N was always ~71-77:
+ *   Muskmelon N=100, rice N=80, jute N=78 — our N was closest to jute/rice/maize.
+ *   But combined with humidity=89 and low rainfall, muskmelon won every time.
+ *   Fix: Rainfall correction now pushes the model toward rice/jute for high-rain areas.
  */
 
 const axios = require('axios');
@@ -47,176 +32,182 @@ const getCurrentSeason = () => {
 };
 
 // ─── Crop knowledge base ──────────────────────────────────────────────────────
-// ✅ Each crop now has weather thresholds based on real agronomic data:
-//   minHumidity / maxHumidity  — % relative humidity the crop tolerates
-//   minRainfall / maxRainfall  — mm/day the crop tolerates (current precipitation)
-//   minTemp / maxTemp          — °C the crop tolerates
-//
-// These are used to filter the fallback/secondary list by actual Open-Meteo values.
-// Thresholds are intentionally generous (±10%) to avoid being too strict.
-// Source: FAO crop water requirements + Indian agricultural zone data.
+// Weather thresholds are based on actual dataset values (analysed from CSV):
+//   minHumidity/maxHumidity — what the crop's training data shows
+//   minTemp/maxTemp         — °C tolerance
+// These filter the fallback list by real Open-Meteo conditions.
 
 const CROP_PROFILES = {
   rice: {
     cropNameEn: 'Rice', cropNameHi: 'चावल', cropNameBn: 'ধান',
     growingDurationDays: 120, waterRequirement: 'HIGH', suitableClimate: 'MONSOON',
-    minHumidity: 60, maxHumidity: 100, minRainfall: 0, maxRainfall: 50, minTemp: 20, maxTemp: 38,
+    minHumidity: 60, maxHumidity: 100, minTemp: 18, maxTemp: 38,
   },
   wheat: {
     cropNameEn: 'Wheat', cropNameHi: 'गेहूं', cropNameBn: 'গম',
     growingDurationDays: 120, waterRequirement: 'MEDIUM', suitableClimate: 'WINTER',
-    minHumidity: 30, maxHumidity: 75, minRainfall: 0, maxRainfall: 20, minTemp: 10, maxTemp: 25,
+    minHumidity: 30, maxHumidity: 75, minTemp: 10, maxTemp: 25,
   },
   maize: {
     cropNameEn: 'Maize', cropNameHi: 'मक्का', cropNameBn: 'ভুট্টা',
     growingDurationDays: 90, waterRequirement: 'MEDIUM', suitableClimate: 'SUMMER',
-    minHumidity: 50, maxHumidity: 90, minRainfall: 0, maxRainfall: 30, minTemp: 18, maxTemp: 38,
+    minHumidity: 50, maxHumidity: 85, minTemp: 18, maxTemp: 38,
   },
   corn: {
     cropNameEn: 'Maize', cropNameHi: 'मक्का', cropNameBn: 'ভুট্টা',
     growingDurationDays: 90, waterRequirement: 'MEDIUM', suitableClimate: 'SUMMER',
-    minHumidity: 50, maxHumidity: 90, minRainfall: 0, maxRainfall: 30, minTemp: 18, maxTemp: 38,
+    minHumidity: 50, maxHumidity: 85, minTemp: 18, maxTemp: 38,
   },
   chickpea: {
     cropNameEn: 'Chickpea', cropNameHi: 'चना', cropNameBn: 'ছোলা',
     growingDurationDays: 100, waterRequirement: 'LOW', suitableClimate: 'WINTER',
-    minHumidity: 20, maxHumidity: 65, minRainfall: 0, maxRainfall: 10, minTemp: 8, maxTemp: 28,
+    // Dataset: humidity avg 17% — very dry crop
+    minHumidity: 10, maxHumidity: 35, minTemp: 8, maxTemp: 28,
   },
   kidneybeans: {
     cropNameEn: 'Kidney Beans', cropNameHi: 'राजमा', cropNameBn: 'কিডনি বিনস',
     growingDurationDays: 90, waterRequirement: 'MEDIUM', suitableClimate: 'ALL_SEASON',
-    minHumidity: 40, maxHumidity: 80, minRainfall: 0, maxRainfall: 20, minTemp: 15, maxTemp: 32,
+    // Dataset: humidity avg 22% — dry crop
+    minHumidity: 10, maxHumidity: 40, minTemp: 15, maxTemp: 32,
   },
   pigeonpeas: {
     cropNameEn: 'Pigeon Peas', cropNameHi: 'अरहर', cropNameBn: 'অড়হর',
     growingDurationDays: 150, waterRequirement: 'LOW', suitableClimate: 'MONSOON',
-    minHumidity: 50, maxHumidity: 85, minRainfall: 0, maxRainfall: 30, minTemp: 20, maxTemp: 38,
+    // Dataset: humidity avg 48%
+    minHumidity: 35, maxHumidity: 65, minTemp: 20, maxTemp: 38,
   },
   mothbeans: {
     cropNameEn: 'Moth Beans', cropNameHi: 'मोठ', cropNameBn: 'মোঠ বিনস',
     growingDurationDays: 75, waterRequirement: 'LOW', suitableClimate: 'SUMMER',
-    // Dry/arid crop — NOT suitable for high-humidity regions like Bengal
-    minHumidity: 20, maxHumidity: 60, minRainfall: 0, maxRainfall: 10, minTemp: 25, maxTemp: 42,
+    // Dataset: humidity avg 53% — dry/arid crop
+    minHumidity: 35, maxHumidity: 65, minTemp: 25, maxTemp: 42,
   },
   mungbean: {
     cropNameEn: 'Mung Bean', cropNameHi: 'मूंग', cropNameBn: 'মুগ ডাল',
     growingDurationDays: 65, waterRequirement: 'LOW', suitableClimate: 'SUMMER',
-    minHumidity: 50, maxHumidity: 90, minRainfall: 0, maxRainfall: 20, minTemp: 25, maxTemp: 40,
+    // Dataset: humidity avg 85%
+    minHumidity: 65, maxHumidity: 100, minTemp: 25, maxTemp: 40,
   },
   blackgram: {
     cropNameEn: 'Black Gram', cropNameHi: 'उड़द', cropNameBn: 'কালো ডাল',
     growingDurationDays: 70, waterRequirement: 'LOW', suitableClimate: 'MONSOON',
-    minHumidity: 55, maxHumidity: 90, minRainfall: 0, maxRainfall: 25, minTemp: 22, maxTemp: 40,
+    // Dataset: humidity avg 65%
+    minHumidity: 50, maxHumidity: 80, minTemp: 22, maxTemp: 40,
   },
   lentil: {
     cropNameEn: 'Lentil', cropNameHi: 'मसूर', cropNameBn: 'মসুর ডাল',
     growingDurationDays: 110, waterRequirement: 'LOW', suitableClimate: 'WINTER',
-    minHumidity: 25, maxHumidity: 65, minRainfall: 0, maxRainfall: 10, minTemp: 10, maxTemp: 25,
+    // Dataset: humidity avg 65%
+    minHumidity: 45, maxHumidity: 80, minTemp: 10, maxTemp: 25,
   },
   pomegranate: {
     cropNameEn: 'Pomegranate', cropNameHi: 'अनार', cropNameBn: 'ডালিম',
     growingDurationDays: 180, waterRequirement: 'LOW', suitableClimate: 'SUMMER',
-    // Needs dry climate — fungal issues in high humidity
-    minHumidity: 20, maxHumidity: 70, minRainfall: 0, maxRainfall: 10, minTemp: 20, maxTemp: 40,
+    // Dataset: humidity avg 90% — dataset says humid but agronomically needs dry
+    // Using dataset value to match what ML learned
+    minHumidity: 70, maxHumidity: 100, minTemp: 18, maxTemp: 38,
   },
   banana: {
     cropNameEn: 'Banana', cropNameHi: 'केला', cropNameBn: 'কলা',
     growingDurationDays: 300, waterRequirement: 'HIGH', suitableClimate: 'ALL_SEASON',
-    // Loves humidity — perfect for Bengal
-    minHumidity: 65, maxHumidity: 100, minRainfall: 0, maxRainfall: 50, minTemp: 20, maxTemp: 38,
+    // Dataset: humidity avg 80%
+    minHumidity: 65, maxHumidity: 100, minTemp: 20, maxTemp: 38,
   },
   mango: {
     cropNameEn: 'Mango', cropNameHi: 'आम', cropNameBn: 'আম',
     growingDurationDays: 120, waterRequirement: 'LOW', suitableClimate: 'SUMMER',
-    minHumidity: 40, maxHumidity: 85, minRainfall: 0, maxRainfall: 20, minTemp: 24, maxTemp: 42,
+    // Dataset: humidity avg 50%
+    minHumidity: 35, maxHumidity: 68, minTemp: 24, maxTemp: 42,
   },
   grapes: {
     cropNameEn: 'Grapes', cropNameHi: 'अंगूर', cropNameBn: 'আঙুর',
     growingDurationDays: 150, waterRequirement: 'LOW', suitableClimate: 'SUMMER',
-    // Needs LOW humidity — NOT suitable for Bengal (humidity 70-90%)
-    minHumidity: 20, maxHumidity: 65, minRainfall: 0, maxRainfall: 5, minTemp: 15, maxTemp: 38,
+    // Dataset: humidity avg 82% but agronomically needs dry — NOT for Bengal plains
+    minHumidity: 20, maxHumidity: 65, minTemp: 15, maxTemp: 38,
   },
   watermelon: {
     cropNameEn: 'Watermelon', cropNameHi: 'तरबूज', cropNameBn: 'তরমুজ',
     growingDurationDays: 80, waterRequirement: 'MEDIUM', suitableClimate: 'SUMMER',
-    minHumidity: 40, maxHumidity: 85, minRainfall: 0, maxRainfall: 15, minTemp: 22, maxTemp: 40,
+    // Dataset: humidity avg 85%
+    minHumidity: 65, maxHumidity: 100, minTemp: 22, maxTemp: 40,
   },
   muskmelon: {
     cropNameEn: 'Muskmelon', cropNameHi: 'खरबूजा', cropNameBn: 'খরমুজ',
     growingDurationDays: 75, waterRequirement: 'MEDIUM', suitableClimate: 'SUMMER',
-    minHumidity: 35, maxHumidity: 80, minRainfall: 0, maxRainfall: 10, minTemp: 22, maxTemp: 40,
+    // Dataset: humidity avg 92%
+    minHumidity: 70, maxHumidity: 100, minTemp: 22, maxTemp: 40,
   },
   apple: {
     cropNameEn: 'Apple', cropNameHi: 'सेब', cropNameBn: 'আপেল',
     growingDurationDays: 150, waterRequirement: 'MEDIUM', suitableClimate: 'WINTER',
-    // Needs cool climate — NOT suitable for hot plains
-    minHumidity: 30, maxHumidity: 75, minRainfall: 0, maxRainfall: 10, minTemp: 5, maxTemp: 22,
+    // Dataset: humidity avg 92% but needs cool climate
+    minHumidity: 70, maxHumidity: 100, minTemp: 5, maxTemp: 20,
   },
   orange: {
     cropNameEn: 'Orange', cropNameHi: 'संतरा', cropNameBn: 'কমলা',
     growingDurationDays: 120, waterRequirement: 'MEDIUM', suitableClimate: 'WINTER',
-    minHumidity: 35, maxHumidity: 80, minRainfall: 0, maxRainfall: 15, minTemp: 12, maxTemp: 30,
+    minHumidity: 35, maxHumidity: 80, minTemp: 12, maxTemp: 30,
   },
   papaya: {
     cropNameEn: 'Papaya', cropNameHi: 'पपीता', cropNameBn: 'পেঁপে',
     growingDurationDays: 270, waterRequirement: 'MEDIUM', suitableClimate: 'ALL_SEASON',
-    // Tropical — good for Bengal
-    minHumidity: 55, maxHumidity: 95, minRainfall: 0, maxRainfall: 30, minTemp: 20, maxTemp: 38,
+    // Dataset: humidity avg 92%
+    minHumidity: 70, maxHumidity: 100, minTemp: 20, maxTemp: 40,
   },
   coconut: {
     cropNameEn: 'Coconut', cropNameHi: 'नारियल', cropNameBn: 'নারকেল',
     growingDurationDays: 365, waterRequirement: 'HIGH', suitableClimate: 'ALL_SEASON',
-    // Coastal tropical — needs high humidity
-    minHumidity: 70, maxHumidity: 100, minRainfall: 0, maxRainfall: 50, minTemp: 20, maxTemp: 38,
+    // Dataset: humidity avg 95%
+    minHumidity: 75, maxHumidity: 100, minTemp: 20, maxTemp: 38,
   },
   cotton: {
     cropNameEn: 'Cotton', cropNameHi: 'कपास', cropNameBn: 'তুলা',
     growingDurationDays: 160, waterRequirement: 'MEDIUM', suitableClimate: 'SUMMER',
-    // Needs LOW humidity (Deccan/Punjab) — NOT suitable for Bengal (humidity 70-90%)
-    minHumidity: 20, maxHumidity: 68, minRainfall: 0, maxRainfall: 10, minTemp: 22, maxTemp: 42,
+    // Dataset: humidity avg 80% — but agronomically Deccan/Punjab crop
+    // Keeping agronomic threshold to prevent showing in Bengal
+    minHumidity: 20, maxHumidity: 68, minTemp: 22, maxTemp: 42,
   },
   jute: {
     cropNameEn: 'Jute', cropNameHi: 'जूट', cropNameBn: 'পাট',
     growingDurationDays: 100, waterRequirement: 'HIGH', suitableClimate: 'MONSOON',
-    // Bengal's signature crop — loves high humidity
-    minHumidity: 65, maxHumidity: 100, minRainfall: 0, maxRainfall: 50, minTemp: 22, maxTemp: 38,
+    // Dataset: humidity avg 80% — Bengal's own crop
+    minHumidity: 65, maxHumidity: 100, minTemp: 22, maxTemp: 38,
   },
   coffee: {
     cropNameEn: 'Coffee', cropNameHi: 'कॉफी', cropNameBn: 'কফি',
     growingDurationDays: 365, waterRequirement: 'MEDIUM', suitableClimate: 'ALL_SEASON',
-    // Needs COOL hilly climate (Karnataka, Kerala hills) — NOT for hot plains
-    minHumidity: 60, maxHumidity: 90, minRainfall: 0, maxRainfall: 20, minTemp: 15, maxTemp: 26,
+    // Dataset: humidity avg 59%, temp avg 25.5°C — hilly cool climate
+    minHumidity: 45, maxHumidity: 75, minTemp: 15, maxTemp: 28,
   },
   potato: {
     cropNameEn: 'Potato', cropNameHi: 'आलू', cropNameBn: 'আলু',
     growingDurationDays: 90, waterRequirement: 'MEDIUM', suitableClimate: 'WINTER',
-    minHumidity: 40, maxHumidity: 80, minRainfall: 0, maxRainfall: 15, minTemp: 10, maxTemp: 24,
+    minHumidity: 40, maxHumidity: 80, minTemp: 10, maxTemp: 24,
   },
   onion: {
     cropNameEn: 'Onion', cropNameHi: 'प्याज', cropNameBn: 'পেঁয়াজ',
     growingDurationDays: 120, waterRequirement: 'LOW', suitableClimate: 'WINTER',
-    minHumidity: 25, maxHumidity: 70, minRainfall: 0, maxRainfall: 10, minTemp: 12, maxTemp: 28,
+    minHumidity: 25, maxHumidity: 70, minTemp: 12, maxTemp: 28,
   },
   tomato: {
     cropNameEn: 'Tomato', cropNameHi: 'टमाटर', cropNameBn: 'টমেটো',
     growingDurationDays: 75, waterRequirement: 'MEDIUM', suitableClimate: 'ALL_SEASON',
-    minHumidity: 45, maxHumidity: 85, minRainfall: 0, maxRainfall: 20, minTemp: 18, maxTemp: 35,
+    minHumidity: 45, maxHumidity: 85, minTemp: 18, maxTemp: 35,
   },
   sugarcane: {
     cropNameEn: 'Sugarcane', cropNameHi: 'गन्ना', cropNameBn: 'আখ',
     growingDurationDays: 365, waterRequirement: 'HIGH', suitableClimate: 'ALL_SEASON',
-    // Loves warm + humid — excellent for Bengal
-    minHumidity: 60, maxHumidity: 100, minRainfall: 0, maxRainfall: 50, minTemp: 22, maxTemp: 40,
+    minHumidity: 60, maxHumidity: 100, minTemp: 22, maxTemp: 40,
   },
   soybean: {
     cropNameEn: 'Soybean', cropNameHi: 'सोयाबीन', cropNameBn: 'সয়াবিন',
     growingDurationDays: 100, waterRequirement: 'MEDIUM', suitableClimate: 'MONSOON',
-    minHumidity: 50, maxHumidity: 85, minRainfall: 0, maxRainfall: 25, minTemp: 20, maxTemp: 35,
+    minHumidity: 50, maxHumidity: 85, minTemp: 20, maxTemp: 35,
   },
   groundnut: {
     cropNameEn: 'Groundnut', cropNameHi: 'मूंगफली', cropNameBn: 'বাদাম',
     growingDurationDays: 120, waterRequirement: 'LOW', suitableClimate: 'SUMMER',
-    minHumidity: 45, maxHumidity: 85, minRainfall: 0, maxRainfall: 20, minTemp: 22, maxTemp: 38,
+    minHumidity: 45, maxHumidity: 85, minTemp: 22, maxTemp: 38,
   },
 };
 
@@ -227,35 +218,29 @@ const getCropProfile = (mlCropName) => {
   return CROP_PROFILES[normalizeKey(mlCropName)] || null;
 };
 
-// ✅ UPDATED — now filters by season AND weather conditions
-// weatherData is optional — if not provided, falls back to season-only filter
+// Filter by season AND actual weather — based on dataset-derived thresholds
 const getFilteredCrops = (excludeKey = null, weatherData = null) => {
   const season = getCurrentSeason();
 
   return Object.entries(CROP_PROFILES)
     .filter(([key, profile]) => {
-      // Exclude the ML-recommended crop (shown separately at top)
       if (excludeKey && key === excludeKey) return false;
 
-      // ── Filter 1: Season ──────────────────────────────────────────────────
+      // Season filter
       const seasonMatch =
         profile.suitableClimate === season ||
         profile.suitableClimate === 'ALL_SEASON';
       if (!seasonMatch) return false;
 
-      // ── Filter 2: Weather conditions (only when we have real data) ────────
+      // Weather filter
       if (weatherData) {
         const { temperature, humidity } = weatherData;
-
-        // Temperature check
         if (temperature < profile.minTemp || temperature > profile.maxTemp) {
-          console.log(`🚫 Filtered out "${profile.cropNameEn}" — temp ${temperature}°C outside [${profile.minTemp}-${profile.maxTemp}]`);
+          console.log(`🚫 Filtered "${profile.cropNameEn}" — temp ${temperature}°C outside [${profile.minTemp}-${profile.maxTemp}]`);
           return false;
         }
-
-        // Humidity check
         if (humidity < profile.minHumidity || humidity > profile.maxHumidity) {
-          console.log(`🚫 Filtered out "${profile.cropNameEn}" — humidity ${humidity}% outside [${profile.minHumidity}-${profile.maxHumidity}]`);
+          console.log(`🚫 Filtered "${profile.cropNameEn}" — humidity ${humidity}% outside [${profile.minHumidity}-${profile.maxHumidity}]`);
           return false;
         }
       }
@@ -263,13 +248,15 @@ const getFilteredCrops = (excludeKey = null, weatherData = null) => {
       return true;
     })
     .map(([, profile]) => profile)
-    // Deduplicate (corn and maize both map to Maize)
     .filter((v, i, arr) => arr.findIndex(x => x.cropNameEn === v.cropNameEn) === i)
     .sort((a, b) => a.cropNameEn.localeCompare(b.cropNameEn));
 };
 
 
 // ─── Step 1: Fetch weather + soil from Open-Meteo ─────────────────────────────
+// ✅ FIX: Use hourly forecast sum for rainfall instead of current precipitation
+// current.precipitation = mm in last hour = almost always 0
+// Dataset mean rainfall = 103mm — we need a representative 7-day value
 const fetchOpenMeteoData = async (latitude, longitude) => {
   const response = await axios.get('https://api.open-meteo.com/v1/forecast', {
     params: {
@@ -278,34 +265,82 @@ const fetchOpenMeteoData = async (latitude, longitude) => {
       current: [
         'temperature_2m',
         'relative_humidity_2m',
-        'precipitation',
         'soil_moisture_0_to_1cm',
         'soil_moisture_1_to_3cm',
         'soil_temperature_0cm',
       ].join(','),
-      forecast_days: 1,
+      // ✅ Get hourly precipitation over 7 days to compute realistic rainfall
+      hourly: 'precipitation',
+      forecast_days: 7,
     },
     timeout: 10000,
   });
 
   const c = response.data.current;
+  const hourly = response.data.hourly;
 
   const temperature   = c.temperature_2m;
   const humidity      = c.relative_humidity_2m;
-  const rainfall      = c.precipitation          ?? 0;
   const soilMoisture  = c.soil_moisture_0_to_1cm ?? 0.2;
   const soilMoisture2 = c.soil_moisture_1_to_3cm ?? soilMoisture;
   const soilTemp      = c.soil_temperature_0cm    ?? temperature;
 
+  // ✅ Sum 7-day hourly precipitation to get realistic monthly-equivalent rainfall
+  // Dataset rainfall range: 20–298mm, mean: 103mm
+  const totalRainfall7d = (hourly?.precipitation || [])
+    .reduce((sum, val) => sum + (val ?? 0), 0);
+
+  // Scale 7-day sum to approximate monthly equivalent (×4.3)
+  // This maps into the dataset's rainfall range meaningfully
+  const rainfall = Math.round(Math.min(300, totalRainfall7d * 4.3));
+
   const avgSoil = (soilMoisture + soilMoisture2) / 2;
 
-  const N  = Math.round(Math.max(0,   Math.min(140, 40 + (avgSoil * 80)  + (Math.max(0, soilTemp - 15) * 0.5))));
-  const P  = Math.round(Math.max(5,   Math.min(145, 30 + (Math.max(0, soilTemp - 10) * 1.2) + (avgSoil * 20))));
-  const K  = Math.round(Math.max(5,   Math.min(205, 30 + (avgSoil * 40)  + (temperature * 0.3))));
-  const ph = parseFloat(Math.max(4.5, Math.min(8.5, 6.5 - (avgSoil * 0.5) + (Math.max(0, temperature - 25) * 0.05))).toFixed(2));
+  // ✅ RECALIBRATED N/P/K formulas based on dataset analysis:
+  // Dataset means: N=50.6, P=53.4, K=48.1
+  // Key differentiators in the dataset:
+  //   High N (>70): rice, maize, jute, banana, cotton, coffee, muskmelon, watermelon
+  //   High P (>60): apple, grapes, chickpea, kidneybeans, lentil (these have P=67-134)
+  //   High K (>100): apple, grapes (K=200)
+  //   Low humidity: chickpea(17%), kidneybeans(22%), pigeonpeas(48%), mothbeans(53%)
+  //
+  // Our soil moisture is always 0.2-0.4 for Bengal → avgSoil ≈ 0.3
+  // So we need formulas that produce varied N/P/K, not always the same value
 
-  console.log(`📡 Weather — temp: ${temperature}°C | humidity: ${humidity}% | rainfall: ${rainfall}mm`);
-  console.log(`🌍 Soil — N: ${N} | P: ${P} | K: ${K} | pH: ${ph}`);
+  const N = Math.round(Math.max(0, Math.min(140,
+    // Base from soil nitrogen availability
+    35
+    + (avgSoil * 100)           // moisture 0.3 → adds 30 (total ~65)
+    + (Math.max(0, soilTemp - 15) * 0.8)  // warm soil boosts N
+    + (humidity > 75 ? 10 : 0)  // humid = higher organic N
+  )));
+
+  const P = Math.round(Math.max(5, Math.min(145,
+    // P is driven more by soil type than moisture
+    // Lower base to avoid always hitting 50+
+    20
+    + (Math.max(0, soilTemp - 10) * 1.5)
+    + (avgSoil * 30)
+    + (humidity < 50 ? 25 : 0)  // drier soils tend to have more P available
+  )));
+
+  const K = Math.round(Math.max(5, Math.min(205,
+    25
+    + (avgSoil * 50)
+    + (temperature * 0.4)
+    + (rainfall > 100 ? 10 : 0) // higher rainfall areas leach less K
+  )));
+
+  const ph = parseFloat(Math.max(4.5, Math.min(8.5,
+    6.5
+    - (avgSoil * 0.4)
+    + (Math.max(0, temperature - 25) * 0.04)
+  )).toFixed(2));
+
+  console.log('─────────────────────────────────────────────────────');
+  console.log(`📡 Weather   — temp: ${temperature}°C | humidity: ${humidity}% | rainfall(7d×4.3): ${rainfall}mm`);
+  console.log(`🌍 Soil NPK  — N: ${N} | P: ${P} | K: ${K} | pH: ${ph}`);
+  console.log('─────────────────────────────────────────────────────');
 
   return { temperature, humidity, rainfall, N, P, K, ph };
 };
@@ -356,7 +391,6 @@ const parsePrediction = (mlResponse) => {
     };
   }
 
-  // Confidence scores object: { "rice": 0.87, "wheat": 0.03, ... }
   if (typeof mlResponse === 'object' && !Array.isArray(mlResponse)) {
     const entries = Object.entries(mlResponse).filter(([, v]) => typeof v === 'number');
     if (entries.length > 0) {
@@ -400,9 +434,7 @@ const getMLCropRecommendation = async (latitude, longitude) => {
 
     const recommendedKey = normalizeKey(prediction.cropName);
     const profile        = getCropProfile(prediction.cropName);
-
-    // ✅ Pass weatherData so the other-crops list is also weather-filtered
-    const allCropsList = getFilteredCrops(recommendedKey, weatherData);
+    const allCropsList   = getFilteredCrops(recommendedKey, weatherData);
 
     return {
       success:     true,
@@ -424,21 +456,19 @@ const getMLCropRecommendation = async (latitude, longitude) => {
 
   } catch (error) {
     console.error('ML Service Error:', error.message);
-    console.log(`⚠️ [ML FAILED — FALLBACK LIST] Serving weather+season filtered fallback. Reason: ${error.message}`);
+    console.log(`⚠️ [ML FAILED — FALLBACK LIST] Reason: ${error.message}`);
 
-    // ✅ Even in fallback, we try to fetch weather for filtering
-    // If weather fetch also failed, fall back to season-only
+    // Try to get weather for filtered fallback
     let weatherData = null;
     try {
       weatherData = await fetchOpenMeteoData(latitude, longitude);
     } catch (e) {
-      console.log('⚠️ Weather fetch also failed — using season-only filter');
+      console.log('⚠️ Weather fetch also failed — season-only filter used');
     }
 
     return {
       success:  false,
       error:    error.message,
-      // ✅ Weather-filtered fallback — Cotton/Coffee/Grapes won't appear for Bengal
       allCrops: getFilteredCrops(null, weatherData),
       season:   getCurrentSeason(),
     };
