@@ -18,16 +18,14 @@ model Farmer {
   phoneNumber         String         @unique
   preferredLanguage   Language       @default(ENGLISH)
 
-  
-  // Metadata
   registrationDate    DateTime       @default(now())
   lastLogin           DateTime?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
-  
-  // Relations
+
   farmerCrops         FarmerCrop[]
   chatHistory         ChatHistory[]  @relation("FarmerToChats")
+  chatSessions        ChatSession[]  @relation("FarmerToSessions")   // ← NEW
   farmerSessions      FarmerSession[]
   locations           FarmerLocation[]
   harvestRecords      HarvestRecord[]
@@ -58,6 +56,7 @@ model FarmerLocation {
   farmer       Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   crops        FarmerCrop[]     @relation("LocationCrops")
   chats        ChatHistory[]    @relation("LocationChats")
+  chatSessions ChatSession[]    @relation("LocationSessions")         // ← NEW
   weather      WeatherData[]
   forecasts    WeatherForecast[]
   harvestRecords HarvestRecord[]
@@ -65,16 +64,37 @@ model FarmerLocation {
   @@map("farmer_locations")
 }
 
+// ============================================
+// CHAT SESSION TABLE (NEW)
+// Groups messages into named conversations
+// ============================================
+model ChatSession {
+  id            String      @id @default(uuid())
+  farmerId      String
+  locationId    String
+  title         String
+  chatType      ChatType    @default(GENERAL)
+  cropName      String?
+  sowingDate    DateTime?
+  pinnedMessage String?
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
+  farmer      Farmer         @relation("FarmerToSessions", fields: [farmerId], references: [id], onDelete: Cascade)
+  location    FarmerLocation @relation("LocationSessions", fields: [locationId], references: [id], onDelete: Cascade)
+  messages    ChatHistory[]  @relation("SessionChats")
+
+  @@map("chat_sessions")
+  @@index([farmerId, locationId])
+}
 
 // ============================================
 // WEATHER DATA TABLE
 // ============================================
 model WeatherData {
   id              String   @id @default(uuid())
-
   locationId      String
-
   temperature     Float
   feelsLike       Float
   humidity        Int
@@ -87,9 +107,7 @@ model WeatherData {
   cloudiness      Int?
   sunrise         DateTime?
   sunset          DateTime?
-
   fetchedAt       DateTime @default(now())
-
   location        FarmerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@map("weather_data")
@@ -97,15 +115,12 @@ model WeatherData {
   @@unique([locationId])
 }
 
-
 // ============================================
 // WEATHER FORECAST TABLE
 // ============================================
 model WeatherForecast {
   id              String   @id @default(uuid())
-
   locationId      String
-
   date            DateTime
   tempMin         Float
   tempMax         Float
@@ -115,9 +130,7 @@ model WeatherForecast {
   humidity        Int
   windSpeed       Float
   chanceOfRain    Float?
-
   fetchedAt       DateTime @default(now())
-
   location        FarmerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@map("weather_forecast")
@@ -135,19 +148,14 @@ model CropMaster {
   suitableClimate       Climate
   waterRequirement      WaterRequirement
   growingDurationDays   Int
-  
-  // Descriptions
   descriptionEn         String?         @db.Text
   descriptionHi         String?         @db.Text
   descriptionBn         String?         @db.Text
-  
   createdAt             DateTime        @default(now())
-  
-  // Relations
   farmerCrops           FarmerCrop[]
   weatherPrecautions    WeatherPrecaution[]
   coldStorageCrops      ColdStorageCrop[]
-  
+
   @@map("crops_master")
 }
 
@@ -163,8 +171,6 @@ model FarmerCrop {
   expectedHarvestDate DateTime?
   status              CropStatus   @default(GROWING)
   createdAt           DateTime     @default(now())
-  
-  // Relations
   farmer              Farmer       @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   location            FarmerLocation @relation("LocationCrops", fields: [locationId], references: [id], onDelete: Cascade)
   crop                CropMaster   @relation(fields: [cropId], references: [id])
@@ -178,14 +184,13 @@ model HarvestRecord {
   farmerId        String
   locationId      String
   farmerCropId    String
-  quantity        Float    // in kg
+  quantity        Float
   harvestDate     DateTime @default(now())
   notes           String?  @db.Text
-  
   farmer          Farmer         @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   location        FarmerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
   farmerCrop      FarmerCrop     @relation(fields: [farmerCropId], references: [id])
-  
+
   @@map("harvest_records")
   @@index([farmerId, locationId])
   @@index([farmerCropId])
@@ -196,7 +201,7 @@ model ColdStorage {
   name          String
   nameBn        String?
   nameHi        String?
-  registeredUnder String  @map("ownerName")  // Renamed from ownerName
+  registeredUnder String  @map("ownerName")
   ownerContact  String
   latitude      Float
   longitude     Float
@@ -207,46 +212,35 @@ model ColdStorage {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
   storedCrops   ColdStorageCrop[]
 
   @@map("cold_storages")
   @@index([latitude, longitude])
   @@index([district, state])
 }
-// ============================================
-// COLD STORAGE CROPS (NEW)
-// ============================================
+
 model ColdStorageCrop {
   id              String   @id @default(uuid())
   coldStorageId   String
   cropId          String
-  
   coldStorage     ColdStorage @relation(fields: [coldStorageId], references: [id], onDelete: Cascade)
   crop            CropMaster  @relation(fields: [cropId], references: [id])
-  
+
   @@unique([coldStorageId, cropId])
   @@map("cold_storage_crops")
   @@index([coldStorageId])
   @@index([cropId])
 }
 
-// ============================================
-// WEATHER PRECAUTIONS TABLE
-// ============================================
 model WeatherPrecaution {
   id                String           @id @default(uuid())
   cropId            String
   weatherCondition  WeatherCondition
-  
-  // Precautions in multiple languages
   precautionTextEn  String           @db.Text
   precautionTextHi  String?          @db.Text
   precautionTextBn  String?          @db.Text
-  
-  // Relations
   crop              CropMaster       @relation(fields: [cropId], references: [id])
-  
+
   @@map("weather_precautions")
 }
 
@@ -258,15 +252,17 @@ model ChatHistory {
   farmerId        String
   messageText     String    @db.Text
   messageLanguage Language
-  isFarmerMessage Boolean   // true = from farmer, false = from bot
+  isFarmerMessage Boolean
   timestamp       DateTime  @default(now())
   locationId      String
+  sessionId       String?   // links to ChatSession (nullable for old records)
 
-  // Relations
-  farmer          Farmer @relation("FarmerToChats", fields: [farmerId], references: [id], onDelete: Cascade)
+  farmer          Farmer         @relation("FarmerToChats", fields: [farmerId], references: [id], onDelete: Cascade)
   location        FarmerLocation @relation("LocationChats", fields: [locationId], references: [id], onDelete: Cascade)
+  session         ChatSession?   @relation("SessionChats", fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@map("chat_history")
+  @@index([sessionId])
 }
 
 // ============================================
@@ -277,14 +273,12 @@ model FarmerSession {
   sessionId     String   @unique
   farmerId      String
   deviceInfo    String?
-  intakeStep     Int?        // 1 to 5
-  intakeData     Json?       // temporary storage of answers
+  intakeStep    Int?
+  intakeData    Json?
   createdAt     DateTime @default(now())
   lastAccessed  DateTime @updatedAt
-  
-  // Relations
   farmer        Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
-  
+
   @@map("farmer_sessions")
 }
 
@@ -295,6 +289,11 @@ enum Language {
   ENGLISH
   BENGALI
   HINDI
+}
+
+enum ChatType {
+  CROP
+  GENERAL
 }
 
 enum Climate {

@@ -12,11 +12,12 @@ const app = express();
 // ===============================
 // MIDDLEWARE
 // ===============================
-app.use(helmet());
-app.use(cors());
-app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(helmet());                          // Security headers
+app.use(cors());                            // Enable CORS
+app.use(morgan('dev'));                      // Logging
+app.use(express.json());                    // Parse JSON bodies
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+
 
 
 // ===============================
@@ -36,13 +37,24 @@ const coldStorageRoutes = require('./cold-storage/routes/coldStorage.routes');
 // ===============================
 // BASIC ROUTES
 // ===============================
+
+// Root test route
 app.get('/', (req, res) => {
-  res.json({ message: 'KrishiSaathi API 🌾', version: '1.0.0', status: 'active' });
+  res.json({
+    message: 'KrishiSaathi API 🌾',
+    version: '1.0.0',
+    status: 'active'
+  });
 });
 
+// Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString()
+  });
 });
+
 
 
 // ===============================
@@ -63,10 +75,10 @@ app.use('/api/cold-storage', coldStorageRoutes);
 // GLOBAL ERROR HANDLER
 // ===============================
 app.use((err, req, res, next) => {
-  console.error('Global Error:', err);
+  console.error("Global Error:", err);
   res.status(err.status || 500).json({
     success: false,
-    message: err.message || 'Internal server error'
+    message: err.message || "Internal server error"
   });
 });
 
@@ -81,8 +93,6 @@ app.use((req, res) => {
 
 // ===============================
 // START SERVER
-// Crop data now comes entirely from the ML model + CROP_PROFILES
-// knowledge base in ml.service.js. No DB seed needed.
 // ===============================
 const PORT = process.env.PORT || 3000;
 
@@ -93,8 +103,8 @@ app.listen(PORT, () => {
   console.log(`\n📦 Features Enabled:`);
   console.log(`   ✅ Weather API`);
   console.log(`   ✅ Location Services`);
-  console.log(`   ✅ AI Chat`);
-  console.log(`   ✅ ML Crop Recommendation (Open-Meteo + ML model)`);
+  console.log(`   ✅ AI Chat (Session-based)`);
+  console.log(`   ✅ ML Crop Recommendations`);
   console.log(`   ✅ Cold Storage Finder`);
   console.log(`   ✅ Harvest Management`);
 });
