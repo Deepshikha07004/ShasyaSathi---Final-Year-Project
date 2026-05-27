@@ -1,4 +1,4 @@
-const prisma = require('../../config/prisma'); // ✅ FIXED: was ../../config/database
+const prisma = require('../../config/prisma');
 const distanceService = require('./distance.service');
 
 class ColdStorageService {
@@ -17,8 +17,38 @@ class ColdStorageService {
       if (harvest.farmerId !== farmerId) throw new Error('Unauthorized access');
 
       const cropId = harvest.farmerCrop.crop.id;
+      const cropNameEn = harvest.farmerCrop.crop.cropNameEn;
       const farmerLat = harvest.location.latitude;
       const farmerLon = harvest.location.longitude;
+
+      // ── DEBUG LOGS ──────────────────────────────────────────────
+      console.log('\n🔍 ═══════════════ COLD STORAGE SEARCH ═══════════════');
+      console.log(`   Crop requested : ${cropNameEn}`);
+      console.log(`   Crop ID in DB  : ${cropId}`);
+      console.log(`   Farmer location: lat=${farmerLat}, lon=${farmerLon}`);
+      console.log(`   Search radius  : ${radiusKm} km`);
+      // ────────────────────────────────────────────────────────────
+
+      // Check total cold storages in DB
+      const totalInDB = await prisma.coldStorage.count();
+      console.log(`   Total cold storages in DB: ${totalInDB}`);
+
+      // Check how many have this specific crop
+      const withThisCrop = await prisma.coldStorage.count({
+        where: { storedCrops: { some: { cropId } } }
+      });
+      console.log(`   Cold storages with crop "${cropNameEn}" (id: ${cropId}): ${withThisCrop}`);
+
+      if (withThisCrop === 0) {
+        // Check if crop-rice style ID exists in DB
+        const sampleCrop = await prisma.cropMaster.findFirst({
+          where: { cropNameEn: { equals: cropNameEn, mode: 'insensitive' } }
+        });
+        console.log(`   ⚠️  Seed crop with name "${cropNameEn}": ${sampleCrop ? `found (id: ${sampleCrop.id})` : 'NOT FOUND in crops_master'}`);
+        console.log(`   ⚠️  Your farmer crop ID (${cropId}) does NOT match seed crop ID (${sampleCrop?.id})`);
+        console.log(`   ➡️  FIX: Clear crops_master + cold_storages + farmer_crops and re-seed`);
+      }
+      console.log('═══════════════════════════════════════════════════════\n');
 
       const coldStoragesWithCrop = await prisma.coldStorage.findMany({
         where: {
@@ -41,15 +71,28 @@ class ColdStorageService {
         }
       });
 
+      console.log(`📦 Cold storages matching cropId: ${coldStoragesWithCrop.length}`);
+
       const nearbyColdStorages = distanceService.filterByRadius(
         farmerLat, farmerLon, coldStoragesWithCrop, radiusKm
       );
+
+      console.log(`📏 After ${radiusKm}km radius filter: ${nearbyColdStorages.length}`);
 
       const sortedColdStorages = distanceService.sortByDistance(
         farmerLat, farmerLon, nearbyColdStorages
       );
 
       const limitedResults = sortedColdStorages.slice(0, limit);
+
+      if (limitedResults.length > 0) {
+        console.log(`✅ Returning ${limitedResults.length} cold storages to frontend`);
+        limitedResults.forEach((cs, i) => {
+          console.log(`   ${i+1}. ${cs.name} — ${cs.distance} km`);
+        });
+      } else {
+        console.log(`❌ No cold storages found within ${radiusKm}km for ${cropNameEn}`);
+      }
 
       return {
         success: true,

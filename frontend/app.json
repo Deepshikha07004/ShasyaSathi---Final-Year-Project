@@ -38,7 +38,8 @@
           "microphonePermission": "Allow Kheshi Sathi to access your microphone for voice questions."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "@react-native-voice/voice"
     ]
   }
 }
