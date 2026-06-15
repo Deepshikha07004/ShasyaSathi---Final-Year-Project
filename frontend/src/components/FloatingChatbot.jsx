@@ -56,9 +56,9 @@ const FloatingChatbot = () => {
 
     // ── Language-aware welcome message ────────────────────────────────
     const getWelcomeMessage = () => {
-        if (lang === 'hi') return "👋 नमस्ते! मैं कृषि साथी हूँ, आपका AI खेती सहायक। आज मैं आपकी कैसे मदद कर सकता हूँ?";
-        if (lang === 'bn') return "👋 নমস্কার! আমি কৃষি সাথী, আপনার AI কৃষি সহায়ক। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?";
-        return "👋 Hi! I'm Krishi Sathi, your AI Farming Assistant. How can I help you today?";
+        if (lang === 'hi') return "👋 नमस्ते! मैं शस्य साथी हूँ, आपका AI खेती सहायक। आज मैं आपकी कैसे मदद कर सकता हूँ?";
+        if (lang === 'bn') return "👋 নমস্কার! আমি শস্য সাথী, আপনার AI কৃষি সহায়ক। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?";
+        return "👋 Hi! I'm ShasyaSathi, your AI Farming Assistant. How can I help you today?";
     };
 
     // ── Language-aware crop welcome message ───────────────────────────
@@ -764,7 +764,7 @@ const FloatingChatbot = () => {
                             </TouchableOpacity>
                             <View style={styles.headerCenter}>
                                 <Ionicons name="leaf" size={22} color="#fff" />
-                                <Text style={styles.headerText}>Krishi Sathi</Text>
+                                <Text style={styles.headerText}>ShasyaSathi</Text>
                             </View>
                             {/* ── FIX ISSUE #3: always navigate home on close ── */}
                             <TouchableOpacity onPress={handleClose} style={styles.headerIconBtn}>

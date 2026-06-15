@@ -1,6 +1,6 @@
-# 🌾 Krishi Sathi
+# 🌾 ShasyaSathi
 
-Krishi Sathi is a **smart farming assistant mobile application** designed to help farmers with weather insights, crop recommendations, and farming advisories.
+ShasyaSathi is a **smart farming assistant mobile application** designed to help farmers with weather insights, crop recommendations, and farming advisories.
 
 This project is built as a **full stack application** with a React Native mobile frontend and a Node.js backend.
 
@@ -30,7 +30,7 @@ This project is built as a **full stack application** with a React Native mobile
 ## 📂 Project Structure
 
 ```
-Krishi_Sathi
+ShasyaSathi
 │
 ├── backend
 │   ├── prisma
@@ -63,7 +63,7 @@ Krishi_Sathi
 ### Clone the repository
 
 ```
-git clone https://github.com/NibeditaRoy2004/Krishi_Sathi.git
+git clone https://github.com/Deepshikha07004/ShasyaSathi---Final-Year-Project.git
 ```
 
 ---
@@ -90,7 +90,7 @@ npx expo start
 
 ## 👩‍💻 Author
 
-**Nibedita Roy**
+**Deepshikha Dutta**
 
 B.Tech Electronics & Communication Engineering  
 Final Year Project – Krishi Sathi

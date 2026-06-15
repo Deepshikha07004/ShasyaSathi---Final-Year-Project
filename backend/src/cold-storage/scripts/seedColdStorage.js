@@ -7,7 +7,7 @@
  *   npx prisma db execute --stdin <<< "DELETE FROM \"ColdStorageCrop\"; DELETE FROM \"ColdStorage\";"
  *   node cold-storage/scripts/seedColdStorage.js
  */
-
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../.env') });
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 

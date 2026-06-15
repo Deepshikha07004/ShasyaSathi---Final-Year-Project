@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // ======================================
 // BASE API URL
 // ======================================
-export const BASE_URL = "http://192.168.29.33:3000";
+export const BASE_URL = "http://192.168.29.202:3000";
 
 // "http://192.168.29.33:3000" 
 // "http://10.221.196.194:3000"

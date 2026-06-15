@@ -39,7 +39,7 @@ class LocationService {
             'accept-language': 'en'
           },
           headers: {
-            'User-Agent': process.env.NOMINATIM_USER_AGENT || 'KrishiSaathi-App'
+            'User-Agent': process.env.NOMINATIM_USER_AGENT || 'ShasyaSaathi-App'
           },
           timeout: 8000
         }
@@ -77,7 +77,7 @@ class LocationService {
     }
 
     const axiosConfig = {
-      headers: { 'User-Agent': process.env.NOMINATIM_USER_AGENT || 'KrishiSaathi-App' },
+      headers: { 'User-Agent': process.env.NOMINATIM_USER_AGENT || 'ShasyaSaathi-App' },
       timeout: 12000
     };
 

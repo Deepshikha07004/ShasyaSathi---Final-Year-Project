@@ -41,7 +41,7 @@ const coldStorageRoutes = require('./cold-storage/routes/coldStorage.routes');
 // Root test route
 app.get('/', (req, res) => {
   res.json({
-    message: 'KrishiSaathi API 🌾',
+    message: 'ShasyaSaathi API 🌾',
     version: '1.0.0',
     status: 'active'
   });

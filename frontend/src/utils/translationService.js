@@ -1,5 +1,5 @@
 /**
- * Translation Service for Krishi Saathi
+ * Translation Service for Shasya Saathi
  * 
  * HOW IT WORKS:
  * 1. First tries your own backend API (if BASE_API_URL is set)

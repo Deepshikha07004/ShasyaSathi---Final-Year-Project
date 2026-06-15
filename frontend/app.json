@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "kheshi_sathi",
-    "slug": "kheshi_sathi",
+    "name": "shasya_sathi",
+    "slug": "shasya_sathi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -35,7 +35,7 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Allow Kheshi Sathi to access your microphone for voice questions."
+          "microphonePermission": "Allow ShasyaSathi to access your microphone for voice questions."
         }
       ],
       "@react-native-community/datetimepicker",
