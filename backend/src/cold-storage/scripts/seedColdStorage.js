@@ -11,7 +11,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../../.e
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// ─── All crops (existing + cotton added from Excel) ───────────────────────────
+// ─── All crops (existing + cotton + new Kolkata crops) ────────────────────────
 const ALL_CROPS = [
   { id: 'crop-rice',        cropNameEn: 'Rice',         cropNameHi: 'चावल',        cropNameBn: 'ধান',          waterRequirement: 'HIGH',   suitableClimate: 'MONSOON',    growingDurationDays: 120 },
   { id: 'crop-wheat',       cropNameEn: 'Wheat',        cropNameHi: 'गेहूं',       cropNameBn: 'গম',           waterRequirement: 'MEDIUM', suitableClimate: 'WINTER',     growingDurationDays: 120 },
@@ -40,6 +40,12 @@ const ALL_CROPS = [
   { id: 'crop-ladyfinger',  cropNameEn: 'Ladyfinger',   cropNameHi: 'भिंडी',       cropNameBn: 'ঢেঁড়স',       waterRequirement: 'MEDIUM', suitableClimate: 'SUMMER',     growingDurationDays: 60  },
   { id: 'crop-cashew',      cropNameEn: 'Cashew',       cropNameHi: 'काजू',        cropNameBn: 'কাজু',         waterRequirement: 'LOW',    suitableClimate: 'SUMMER',     growingDurationDays: 365 },
   { id: 'crop-coconut',     cropNameEn: 'Coconut',      cropNameHi: 'नारियल',      cropNameBn: 'নারকেল',       waterRequirement: 'HIGH',   suitableClimate: 'ALL_SEASON', growingDurationDays: 365 },
+  // ✅ New crops added for the 17 Kolkata warehouses
+  { id: 'crop-mustard',     cropNameEn: 'Mustard',      cropNameHi: 'सरसों',       cropNameBn: 'সরিষা',        waterRequirement: 'LOW',    suitableClimate: 'WINTER',     growingDurationDays: 110 },
+  { id: 'crop-papaya',      cropNameEn: 'Papaya',       cropNameHi: 'पपीता',       cropNameBn: 'পেঁপে',        waterRequirement: 'MEDIUM', suitableClimate: 'ALL_SEASON', growingDurationDays: 270 },
+  { id: 'crop-lentil',      cropNameEn: 'Lentil',       cropNameHi: 'मसूर',        cropNameBn: 'মসুর ডাল',      waterRequirement: 'LOW',    suitableClimate: 'WINTER',     growingDurationDays: 110 },
+  { id: 'crop-mungbean',    cropNameEn: 'Mung Bean',    cropNameHi: 'मूंग',        cropNameBn: 'মুগ ডাল',       waterRequirement: 'LOW',    suitableClimate: 'SUMMER',     growingDurationDays: 65  },
+  { id: 'crop-bottlegourd', cropNameEn: 'Bottle Gourd', cropNameHi: 'लौकी',        cropNameBn: 'লাউ',          waterRequirement: 'MEDIUM', suitableClimate: 'ALL_SEASON', growingDurationDays: 60  },
 ];
 
 // ─── Commodity name → crop ID map ─────────────────────────────────────────────
@@ -72,11 +78,20 @@ const COMMODITY_MAP = {
   'green chilli': 'crop-chilli',
   'coriander':    'crop-coriander',
   'ladyfinger':   'crop-ladyfinger',
+  'okra':         'crop-ladyfinger', // ✅ okra = ladyfinger, same crop
   'cashew':       'crop-cashew',
   'coconut':      'crop-coconut',
+  // ✅ New mappings
+  'mustard':      'crop-mustard',
+  'papaya':       'crop-papaya',
+  'lentil':       'crop-lentil',
+  'mung bean':    'crop-mungbean',
+  'mungbean':     'crop-mungbean',
+  'bottle gourd': 'crop-bottlegourd',
+  'bottlegourd':  'crop-bottlegourd',
 };
 
-// ─── 57 warehouses — sourced from WEST_BENGAL_WAREHOUSE_DATA_(4).xlsx ─────────
+// ─── 57 warehouses (12 Kolkata updated) + 5 NEW Kolkata warehouses = 62 total ─
 const WAREHOUSES = [
   {
     name: "State Warehousing Corporation KRISHNANAGAR",
@@ -85,7 +100,6 @@ const WAREHOUSES = [
     address: "3, JN Roy Bahadur Rd, Krishnanagar, West Bengal 741101, India",
     district: "Nadia", state: "West Bengal", capacity: 7585,
     ownerContact: "9331217346",
-    // Excel: rice, potato, banana, guava, cotton
     commodities: ["rice","potato","banana","guava","cotton"],
     latitude: 23.39803, longitude: 88.4945649,
   },
@@ -96,7 +110,6 @@ const WAREHOUSES = [
     address: "62RM+GF6, Ailakundi P, West Bengal 722102, India",
     district: "Bankura", state: "West Bengal", capacity: 5579,
     ownerContact: "9331217346",
-    // Excel: rice, mango, guava, cotton
     commodities: ["rice","mango","guava","cotton"],
     latitude: 23.2412842, longitude: 87.03363709999999,
   },
@@ -197,7 +210,6 @@ const WAREHOUSES = [
     address: "246M+W8Q, Malda, West Bengal 732102, India",
     district: "Malda", state: "West Bengal", capacity: 9491,
     ownerContact: "9331217346",
-    // Excel: rice, maize, mango, cotton
     commodities: ["rice","maize","mango","cotton"],
     latitude: 25.0123375, longitude: 88.13335939999999,
   },
@@ -208,7 +220,6 @@ const WAREHOUSES = [
     address: "V973+7G2, Garhbeta, West Bengal 721127, India",
     district: "Paschim Medinipur", state: "West Bengal", capacity: 6002,
     ownerContact: "9331217346",
-    // Excel: rice, carrots, cashew, cotton
     commodities: ["rice","carrots","cashew","cotton"],
     latitude: 22.8631347, longitude: 87.3537738,
   },
@@ -229,8 +240,8 @@ const WAREHOUSES = [
     address: "NH-6, Jala kendua, Dhulagori, Howrah, West Bengal 711322, India",
     district: "Kolkata", state: "West Bengal", capacity: 2311,
     ownerContact: "9909040127",
-    // Excel: rice, chilli, brinjal, cotton
-    commodities: ["rice","chilli","brinjal","cotton"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","mustard","brinjal","mango"],
     latitude: 22.555034, longitude: 88.1585845,
   },
   {
@@ -350,7 +361,8 @@ const WAREHOUSES = [
     address: "Garden Reach Rd, Kolkata, West Bengal, India",
     district: "Kolkata", state: "West Bengal", capacity: 13585,
     ownerContact: "9868924092",
-    commodities: ["rice","eggplant","coriander"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","cabbage","cauliflower"],
     latitude: 22.5465208, longitude: 88.2938454,
   },
   {
@@ -360,7 +372,6 @@ const WAREHOUSES = [
     address: "Belda, West Bengal, India",
     district: "Paschim Medinipur", state: "West Bengal", capacity: 4100,
     ownerContact: "9868924092",
-    // Excel: rice, maize, tomato, cotton
     commodities: ["rice","maize","tomato","cotton"],
     latitude: 22.0758421, longitude: 87.3412438,
   },
@@ -371,7 +382,6 @@ const WAREHOUSES = [
     address: "Rangamati, Midnapore, West Bengal, India",
     district: "Paschim Medinipur", state: "West Bengal", capacity: 31600,
     ownerContact: "9868924092",
-    // Excel: rice, maize, carrots, cashew, cotton
     commodities: ["rice","maize","carrots","cashew","cotton"],
     latitude: 22.4230948, longitude: 87.3003706,
   },
@@ -452,7 +462,8 @@ const WAREHOUSES = [
     address: "Shankar Coils Private Limited, 2, Taratala Rd, Makalhati Mauza, Kolkata, West Bengal 700088, India",
     district: "Kolkata", state: "West Bengal", capacity: 341,
     ownerContact: "9868924092",
-    commodities: ["rice","eggplant","coriander"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","banana","papaya","guava"],
     latitude: 22.5224261, longitude: 88.2910067,
   },
   {
@@ -462,7 +473,8 @@ const WAREHOUSES = [
     address: "Bonhooghly Government Colony, Baranagar, West Bengal, India",
     district: "Kolkata", state: "West Bengal", capacity: 31110,
     ownerContact: "9868924092",
-    commodities: ["rice","potato","tomato"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","lentil","mung bean"],
     latitude: 22.649365, longitude: 88.3805094,
   },
   {
@@ -482,7 +494,6 @@ const WAREHOUSES = [
     address: "Hata Colony, Keshobnagar, Berhampore, West Bengal 742102, India",
     district: "Murshidabad", state: "West Bengal", capacity: 31600,
     ownerContact: "9868924092",
-    // Excel: rice, potato, mango, litchi, cotton
     commodities: ["rice","potato","mango","litchi","cotton"],
     latitude: 24.1009637, longitude: 88.28233829999999,
   },
@@ -503,7 +514,6 @@ const WAREHOUSES = [
     address: "Sunil Aloy, Jamuna andh colony, Kelemele, Bishnupur, West Bengal 722122, India",
     district: "Bankura", state: "West Bengal", capacity: 16000,
     ownerContact: "9868924092",
-    // Excel: rice, mango, guava, cotton
     commodities: ["rice","mango","guava","cotton"],
     latitude: 23.0717833, longitude: 87.29502269999999,
   },
@@ -554,7 +564,8 @@ const WAREHOUSES = [
     address: "Sarkarpool, Rampur, Santoshpur, Maheshtala, West Bengal, India",
     district: "Kolkata", state: "West Bengal", capacity: 41200,
     ownerContact: "8003893017",
-    commodities: ["rice","pumpkin","potato"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","bottle gourd","okra","mustard"],
     latitude: 22.5160854, longitude: 88.28893649999999,
   },
   {
@@ -564,7 +575,8 @@ const WAREHOUSES = [
     address: "34, Canal S Rd, Tangra, Kolkata, West Bengal 700015, India",
     district: "Kolkata", state: "West Bengal", capacity: 18600,
     ownerContact: "9836621177",
-    commodities: ["rice","coriander","potato"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","brinjal","cabbage"],
     latitude: 22.559594, longitude: 88.39542569999999,
   },
   {
@@ -574,7 +586,8 @@ const WAREHOUSES = [
     address: "Kolkata, West Bengal 700040, India",
     district: "Kolkata", state: "West Bengal", capacity: 7198,
     ownerContact: "9733027807",
-    commodities: ["rice","potato","ladyfinger"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","cauliflower","mango","banana"],
     latitude: 22.4868527, longitude: 88.350944,
   },
   {
@@ -584,7 +597,8 @@ const WAREHOUSES = [
     address: "200, Dakshindari Rd, Lahabagan, Sreebhumi, Lake Town, South Dumdum, West Bengal 700048, India",
     district: "Kolkata", state: "West Bengal", capacity: 5716,
     ownerContact: "9051506463",
-    commodities: ["rice","potato","chilli"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","papaya","guava"],
     latitude: 22.5996578, longitude: 88.4006764,
   },
   {
@@ -594,7 +608,8 @@ const WAREHOUSES = [
     address: "174, Jessore Rd, Nagerbazar, Kamardanga, Kolkata, West Bengal 700074, India",
     district: "Kolkata", state: "West Bengal", capacity: 6652,
     ownerContact: "9433869226",
-    commodities: ["rice","potato","ladyfinger"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","lentil","mung bean","bottle gourd"],
     latitude: 22.621516, longitude: 88.41427999999999,
   },
   {
@@ -604,7 +619,8 @@ const WAREHOUSES = [
     address: "55, Canal E Rd, Sector 1, Bagmari, Kolkata, West Bengal 700085, India",
     district: "Kolkata", state: "West Bengal", capacity: 9491,
     ownerContact: "9434988350",
-    commodities: ["rice","cabbage","cauliflower"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","okra","mustard"],
     latitude: 22.5666688, longitude: 88.38224869999999,
   },
   {
@@ -614,7 +630,8 @@ const WAREHOUSES = [
     address: "1, Hide Rd, Tikiapara, Garden Reach, Kolkata, West Bengal 700043, India",
     district: "Kolkata", state: "West Bengal", capacity: 6002,
     ownerContact: "9836823471",
-    commodities: ["rice","brinjal"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","brinjal","cabbage","cauliflower"],
     latitude: 22.5371023, longitude: 88.3094823,
   },
   {
@@ -624,8 +641,8 @@ const WAREHOUSES = [
     address: "1, Oil Installation Rd, Alipore Mint Colony, Alipore, Kolkata, West Bengal 700088, India",
     district: "Kolkata", state: "West Bengal", capacity: 7585,
     ownerContact: "9051408227",
-    // Excel: rice, brinjal, cotton
-    commodities: ["rice","brinjal","cotton"],
+    // ✅ Updated (Kolkata standard set)
+    commodities: ["rice","jute","cotton","potato","mango","banana"],
     latitude: 22.5226392, longitude: 88.3124125,
   },
   {
@@ -655,9 +672,69 @@ const WAREHOUSES = [
     address: "Jotram, West Bengal, India",
     district: "Purba Bardhaman", state: "West Bengal", capacity: 16683,
     ownerContact: "9868924092",
-    // Excel: rice, potato, carrot, potato → deduplicated to rice, potato, carrot
     commodities: ["rice","potato","carrot"],
     latitude: 23.2229253, longitude: 87.9310291,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ✅ NEW: 5 additional Kolkata warehouses (rows 58–62)
+  // ⚠️ capacity & ownerContact are PLACEHOLDERS — replace with real values
+  //    before running this in production.
+  // ═══════════════════════════════════════════════════════════════════════
+  {
+    name: "Hindustan Ice & Cold Storage Pvt. Ltd.",
+    nameBn: "হিন্দুস্তান আইস অ্যান্ড কোল্ড স্টোরেজ প্রাইভেট লিমিটেড",
+    nameHi: "हिंदुस्तान आइस एंड कोल्ड स्टोरेज प्राइवेट लिमिटेड",
+    address: "3/1, Gas Street, Garpar, Raja Bazar, Kolkata, West Bengal 700009, India",
+    district: "Kolkata", state: "West Bengal",
+    capacity: 5000,          // TODO: replace with actual capacity (MT)
+    ownerContact: "0000000000", // TODO: replace with actual contact number
+    commodities: ["rice","jute","cotton","potato","papaya","guava","lentil"],
+    latitude: 22.5765688, longitude: 88.3740568,
+  },
+  {
+    name: "Manicktala Cold Storage",
+    nameBn: "মানিকতলা কোল্ড স্টোরেজ",
+    nameHi: "मानिकतला कोल्ड स्टोरेज",
+    address: "23, Canal West Road, Manicktala, Khanna, Kolkata, West Bengal 700004, India",
+    district: "Kolkata", state: "West Bengal",
+    capacity: 5000,          // TODO: replace with actual capacity (MT)
+    ownerContact: "0000000000", // TODO: replace with actual contact number
+    commodities: ["rice","jute","cotton","potato","mung bean","bottle gourd"],
+    latitude: 22.5901305, longitude: 88.3796373,
+  },
+  {
+    name: "Storefresh Logitech LLP",
+    nameBn: "স্টোরফ্রেশ লজিটেক এলএলপি",
+    nameHi: "स्टोरफ्रेश लॉजिटेक एलएलपी",
+    address: "43/1, Garden Reach Road, Rajabagan Dock Yard, Metiabruz, Kolkata, West Bengal 700044, India",
+    district: "Kolkata", state: "West Bengal",
+    capacity: 5000,          // TODO: replace with actual capacity (MT)
+    ownerContact: "0000000000", // TODO: replace with actual contact number
+    commodities: ["rice","jute","cotton","potato","okra","mustard","brinjal"],
+    latitude: 22.5499218, longitude: 88.2795350,
+  },
+  {
+    name: "FCI Godown (Taratala)",
+    nameBn: "এফসিআই গুদাম (তারাতলা)",
+    nameHi: "एफसीआई गोदाम (तारातला)",
+    address: "G8C2+QQ9, Taratala Road, Paharpur, Garden Reach, Kolkata, West Bengal 700088, India",
+    district: "Kolkata", state: "West Bengal",
+    capacity: 5000,          // TODO: replace with actual capacity (MT)
+    ownerContact: "0000000000", // TODO: replace with actual contact number
+    commodities: ["rice","jute","cotton","potato","cabbage","cauliflower"],
+    latitude: 22.5223379, longitude: 88.3019789,
+  },
+  {
+    name: "Ecrop – A Kushal Bharat Venture",
+    nameBn: "ইক্রপ – আ কুশল ভারত ভেঞ্চার",
+    nameHi: "ईक्रॉप – अ कुशल भारत वेंचर",
+    address: "68, Basanti Highway, Paschim Chowbagha, Dhapa, Kolkata, West Bengal 700107, India",
+    district: "Kolkata", state: "West Bengal",
+    capacity: 5000,          // TODO: replace with actual capacity (MT)
+    ownerContact: "0000000000", // TODO: replace with actual contact number
+    commodities: ["rice","jute","cotton","potato","mango","banana","papaya"],
+    latitude: 22.5322705, longitude: 88.4076246,
   },
 ];
 
