@@ -687,8 +687,8 @@ const WAREHOUSES = [
     nameHi: "हिंदुस्तान आइस एंड कोल्ड स्टोरेज प्राइवेट लिमिटेड",
     address: "3/1, Gas Street, Garpar, Raja Bazar, Kolkata, West Bengal 700009, India",
     district: "Kolkata", state: "West Bengal",
-    capacity: 5000,          // TODO: replace with actual capacity (MT)
-    ownerContact: "0000000000", // TODO: replace with actual contact number
+    capacity: 6800,          // TODO: replace with actual capacity (MT)
+    ownerContact: "9908104017", // TODO: replace with actual contact number
     commodities: ["rice","jute","cotton","potato","papaya","guava","lentil"],
     latitude: 22.5765688, longitude: 88.3740568,
   },
@@ -698,8 +698,8 @@ const WAREHOUSES = [
     nameHi: "मानिकतला कोल्ड स्टोरेज",
     address: "23, Canal West Road, Manicktala, Khanna, Kolkata, West Bengal 700004, India",
     district: "Kolkata", state: "West Bengal",
-    capacity: 5000,          // TODO: replace with actual capacity (MT)
-    ownerContact: "0000000000", // TODO: replace with actual contact number
+    capacity: 2311,          // TODO: replace with actual capacity (MT)
+    ownerContact: "9748378420", // TODO: replace with actual contact number
     commodities: ["rice","jute","cotton","potato","mung bean","bottle gourd"],
     latitude: 22.5901305, longitude: 88.3796373,
   },
@@ -709,8 +709,8 @@ const WAREHOUSES = [
     nameHi: "स्टोरफ्रेश लॉजिटेक एलएलपी",
     address: "43/1, Garden Reach Road, Rajabagan Dock Yard, Metiabruz, Kolkata, West Bengal 700044, India",
     district: "Kolkata", state: "West Bengal",
-    capacity: 5000,          // TODO: replace with actual capacity (MT)
-    ownerContact: "0000000000", // TODO: replace with actual contact number
+    capacity: 1196,          // TODO: replace with actual capacity (MT)
+    ownerContact: "9434011192", // TODO: replace with actual contact number
     commodities: ["rice","jute","cotton","potato","okra","mustard","brinjal"],
     latitude: 22.5499218, longitude: 88.2795350,
   },
@@ -721,7 +721,7 @@ const WAREHOUSES = [
     address: "G8C2+QQ9, Taratala Road, Paharpur, Garden Reach, Kolkata, West Bengal 700088, India",
     district: "Kolkata", state: "West Bengal",
     capacity: 5000,          // TODO: replace with actual capacity (MT)
-    ownerContact: "0000000000", // TODO: replace with actual contact number
+    ownerContact: "9835560983", // TODO: replace with actual contact number
     commodities: ["rice","jute","cotton","potato","cabbage","cauliflower"],
     latitude: 22.5223379, longitude: 88.3019789,
   },
@@ -731,8 +731,8 @@ const WAREHOUSES = [
     nameHi: "ईक्रॉप – अ कुशल भारत वेंचर",
     address: "68, Basanti Highway, Paschim Chowbagha, Dhapa, Kolkata, West Bengal 700107, India",
     district: "Kolkata", state: "West Bengal",
-    capacity: 5000,          // TODO: replace with actual capacity (MT)
-    ownerContact: "0000000000", // TODO: replace with actual contact number
+    capacity: 3371,          // TODO: replace with actual capacity (MT)
+    ownerContact: "9748750189", // TODO: replace with actual contact number
     commodities: ["rice","jute","cotton","potato","mango","banana","papaya"],
     latitude: 22.5322705, longitude: 88.4076246,
   },
